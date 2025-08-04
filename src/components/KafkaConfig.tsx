@@ -51,10 +51,11 @@ export const KafkaConfig = () => {
 
   const handleInputChange = (field: keyof KafkaConfigData, value: string | number | boolean) => {
     setConfig(prev => ({ ...prev, [field]: value }));
+    // Reset connection status when config changes
+    setConnectionStatus('disconnected');
   };
 
   const handleSaveConfig = () => {
-    // Save configuration to localStorage or backend
     localStorage.setItem('kafkaConfig', JSON.stringify(config));
     toast({
       title: "Configuration Saved",
@@ -62,27 +63,39 @@ export const KafkaConfig = () => {
     });
   };
 
-  const handleTestConnection = async () => {
-    setIsConnecting(true);
-    
-    // Simulate connection test
-    setTimeout(() => {
-      const success = Math.random() > 0.3; // 70% success rate for demo
-      setConnectionStatus(success ? 'connected' : 'error');
-      setIsConnecting(false);
-      
-      toast({
-        title: success ? "Connection Successful" : "Connection Failed",
-        description: success 
-          ? "Successfully connected to Kafka cluster" 
-          : "Failed to connect. Please check your configuration.",
-        variant: success ? "default" : "destructive"
-      });
-    }, 2000);
-  };
+const handleTestConnection = async () => {
+  setIsConnecting(true);
+  setConnectionStatus('disconnected');
+
+
+  try {
+    const response = await fetch('http://localhost:3001/api/kafka/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    });
+    const result = await response.json();
+    setConnectionStatus(result.status);
+    toast({
+      title: result.status === 'connected' ? "Connection Successful" : "Connection Failed",
+      description: result.message,
+      variant: result.status === 'connected' ? "default" : "destructive"
+    });
+  } catch (error: any) {
+    setConnectionStatus('error');
+    toast({
+      title: "Connection Failed",
+      description: `Failed to connect: ${error.message || 'Network error'}`,
+      variant: "destructive"
+    });
+  } finally {
+    setIsConnecting(false);
+  }
+};
 
   const handleLoadDefaults = () => {
     setConfig(defaultConfig);
+    setConnectionStatus('disconnected');
     toast({
       title: "Defaults Loaded",
       description: "Configuration reset to default values.",
@@ -120,7 +133,6 @@ export const KafkaConfig = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Basic Configuration */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="bootstrapServers">Bootstrap Servers</Label>
@@ -162,7 +174,6 @@ export const KafkaConfig = () => {
 
           <Separator />
 
-          {/* Performance Settings */}
           <div>
             <h3 className="text-lg font-semibold mb-4">Performance Settings</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -206,7 +217,6 @@ export const KafkaConfig = () => {
 
           <Separator />
 
-          {/* Security Settings */}
           <div>
             <h3 className="text-lg font-semibold mb-4">Security Settings</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -249,7 +259,6 @@ export const KafkaConfig = () => {
 
           <Separator />
 
-          {/* Additional Properties */}
           <div>
             <h3 className="text-lg font-semibold mb-4">Additional Properties</h3>
             <div className="space-y-2">
@@ -266,7 +275,6 @@ export const KafkaConfig = () => {
 
           <Separator />
 
-          {/* Action Buttons */}
           <div className="flex flex-wrap gap-4">
             <Button onClick={handleSaveConfig} className="flex items-center gap-2">
               <Save className="h-4 w-4" />

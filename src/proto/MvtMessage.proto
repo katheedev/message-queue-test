@@ -1,0 +1,133 @@
+syntax="proto3";
+package com.accelaero.aeroline.crew;
+message MvtMessage {
+    string flightIdentifier = 1;
+    string airlineDesignator = 2;
+    string flightNumber = 3;
+    string flightOperationDateTimeZulu = 4;
+    string aircraftRegistration = 5;
+    string movementAirportCode = 6;
+    MovmentData movmentData = 7;
+    string rawMessage = 8;
+    string remarks = 9;
+}
+message MovmentData {
+    DepartureMessageDetails departureMessageDetails = 1;
+    ArrivalMessageDetail arrivalMessageDetail = 2;
+    DelayMessageDetail delayMessageDetail = 3;
+    DelayedTakeOffMessageDetail delayedTakeOffMessageDetail = 4;
+    ReturnToRampMessage returnToRampMessage = 5;
+    ReturnFromAirborneMessage returnFromAirborneMessage = 6;
+    RevisedEstimatedArrivalMessage revisedEstimatedArrivalMessage = 7;
+    ArrivalTaxiTimeVarianceMessage arrivalTaxiTimeVarianceMessage = 8;
+}
+message ArrivalTaxiTimeVarianceMessage {
+    string arrivalIdentifier = 1;
+    DateTime touchDownDateTimeZulu = 2;
+    DateTime estimatedOnBlockDateTimeZule = 3;
+    string scheduledFlightDepartureDateTimeZulu = 4;
+}
+message RevisedEstimatedArrivalMessage {
+    string revisedArrivalIdentifier = 1;
+    DateTime revisedEstimatedArrivalDateTimeZulu = 2;
+    DateTime estimatedOnBlockDateTimeZulu = 3;
+}
+message ReturnFromAirborneMessage {
+    string arrivalIdentifier = 1;
+    DateTime touchDownDateTimeZulu = 2;
+    DateTime onBlockDateTimeZule = 3;
+    string returnFromAirborneJustificationCode = 4;
+    DateTime estimatedArrivalDateTimeZulu = 5;
+    DateTime estimatedOnBlockDateTimeZule = 6;
+    string scheduledFlightDepartureDateTimeZulu = 7;
+}
+message ReturnToRampMessage {
+    string departureIdentifier = 1;
+    DateTime offBlockDateTimeZulu = 2;
+    DateTime returnToRampDateTimeZulu = 3;
+    string returnToRampjustificationCode = 4;
+    repeated Delay delay = 5;
+    DateTime estimatedOnblockTimeZulu = 6;
+    string scheduledFlightDepartureDateTimeZulu = 7;
+}
+message DelayedTakeOffMessageDetail {
+    string departureIdentifier = 1;
+    DateTime offBlockDateTimeZulu = 2;
+    DateTime estimatedTakeOffDateTimeZulu = 3;
+    DateTime estimatedArrivalDateTimeZulu = 4;
+    repeated Delay delay = 5;
+    repeated PassengerInformation passengerInformation = 6;
+    int32 reclearanceTimeInMinutes = 7;
+    DateTime estimatedOnblockTimeZulu = 8;
+    DateTime scheduledFlightDepartureDateTimeZulu = 9;
+    repeated Delay extraDelay = 10;
+    repeated CrewReportTime crewReportTime = 11;
+    DateTime movementAfterPushBackDateTimeZulu = 12;
+    // sub delay
+    int32 takeOffFuel = 13;
+    int32 takeOffWeight = 14;
+    int32 zeroFuelWeight = 15;
+    OperationCategory operationCategory = 16;
+}
+message DelayMessageDetail {
+    DateTime estimatedDepartureDateTime = 1;
+    DateTime revisedArrivalDateTime = 2;
+    DateTime estimatedBlockDateTimeZule = 3;
+    repeated Delay delay = 4;
+    string scheduledFlightDepartureDateTimeZulu = 5;
+    repeated Delay extraDelay = 6;
+    // sub delay
+}
+message ArrivalMessageDetail {
+    string arrivalIdentifier = 1;
+    DateTime touchDownDateTimeZulu = 2;
+    DateTime onBlockDateTimeZule = 3;
+    string scheduledFlightDepartureDateTimeZulu = 4;
+}
+message DepartureMessageDetails {
+    string departureIdentifier = 1;
+    DateTime offBlockDateTimeZulu = 2;
+    DateTime airBorneDateTimeZule = 3;
+    DateTime estimatedArrivalDateTimeZulu = 4;
+    string estimatedArrivalAirport = 5;
+    repeated Delay delay = 6;
+    repeated PassengerInformation passengerInformation = 7;
+    int32 reclearanceTimeInMinutes = 8;
+    string reclearanceAirport = 9;
+    DateTime estimatedOnblockTimeZulu = 10;
+    string scheduledFlightDepartureDateTimeZulu = 11;
+    repeated Delay extraDelay = 12;
+    repeated CrewReportTime crewReportTime = 13;
+    DateTime movementAfterPushBackDateTimeZulu = 14;
+    // repeated Delay subDelay = 5; // TODO
+    int32 takeOffFuel = 15;
+    int32 takeOffWeight = 16;
+    int32 zeroFuelWeight = 17;
+    OperationCategory operationCategory = 18;
+}
+message DateTime {
+    string time = 1; // time HH:MM format
+    string date = 2; // two digit number
+}
+message Delay {
+    string delayIdentifier = 1;
+    string delayCode = 2;
+    int32 delayInMinutes = 3;
+    string subDelayCode = 4;
+}
+message PassengerInformation {
+    int32 occupiedCount = 1;
+}
+message CrewReportTime {
+    CrewType crewType = 1;
+    DateTime reportingDateTimeZulu = 2;
+}
+message OperationCategory {
+    string crewCategory = 1;
+    string aircraftCategory = 2;
+}
+enum CrewType {
+    CABIN_CREW = 0;
+    COCKPIT_CREW = 1;
+    OTHER = 2;
+}

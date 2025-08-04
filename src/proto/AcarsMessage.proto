@@ -1,0 +1,25 @@
+syntax="proto3";
+package com.accelaero.aeroline.crew;
+message AcarsMessage {
+    string acarsMessageReferenceId = 1;
+    string flightNumber = 2;
+    string aircraftRegistration = 3;
+    string originIcaoCode = 4;
+    string destinationIcaoCode = 5;
+    string onDateTimeZulu = 6;                       // Format => "dd/MM/yyyy HH:mm:ss"
+    string inDateTimeZulu = 7;                       // Format => "dd/MM/yyyy HH:mm:ss"
+    string outDateTimeZulu = 8;                      // Format => "dd/MM/yyyy HH:mm:ss"
+    string offDateTimeZulu = 9;                      // Format => "dd/MM/yyyy HH:mm:ss"
+    string estimatedTimeofArrivalZulu = 10;          // Format => "dd/MM/yyyy HH:mm:ss"
+    enum MessageType {
+        IN = 0;
+        ON = 1;
+        OUT = 2;
+        OFF = 3;
+    }
+    MessageType messageType = 11;
+    int32 fuelOnBoard = 12;
+    int32 fuelRemaining = 13;
+    string messageDateTime = 14;              // time in message file name Format => "dd/MM/yyyy HH:mm:ss"
+    string scheduledDepartureDateZulu = 15;
+}

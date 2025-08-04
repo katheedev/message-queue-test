@@ -1,0 +1,57 @@
+syntax="proto3";
+package com.accelaero.aeroline.crew;
+message LdmMessage {
+    string flightIdentifier = 1;
+    string airlineDesignator = 2;
+    string flightNumber = 3;
+    string flightOperationDateTimeZulu = 4;
+    string aircraftRegistration = 5;
+    string versionOfAircraft = 6;
+    CrewComposition numberOfCrew = 7;
+    repeated DestinationDetails destinationDetails = 8;
+    repeated CargoLoadInfomation cargoLoadInfomation = 9;
+    repeated SupplementaryInformation supplementaryInformation = 10;
+}
+message DestinationDetails {
+    string destinationAirport = 1;
+    int32 NIL = 2;
+    PaxCountDetails paxCountDetails = 3;
+    double cabinBaggageWeight = 4;
+    string totalDeadLoad = 5;
+    repeated LoadInCompartment loadInCompartment = 6;
+    repeated CabinClassPax cabinClassPax = 7;
+    repeated CabinClassPax cabinClassPadPax = 8;
+    string destinationRemark = 9;
+}
+message PaxCountDetails {
+    int32 numberOfAdult = 1;
+    int32 numberOfMale = 2;
+    int32 numberOfFemale = 3;
+    int32 numberOfChildren = 4;
+    int32 numberOfInfants = 5;
+}
+message LoadInCompartment {
+    int32 compartmentDesignator = 1;
+    double weight = 2;
+}
+message CrewComposition {
+    int32 numberOfCockpitCrew = 1;
+    int32 numberOfCabinCrew = 2;
+    int32 numberOfFemaleCabinCrew = 3;
+    int32 numberOfMaleCabinCrew = 4;
+}
+message CabinClassPax {
+    string class = 1;
+    int32 seatOccupied = 2;
+}
+message CargoLoadInfomation {
+    string destinationAirport = 1;
+    int32 NIL = 2;
+    repeated LoadInCompartment loadInCompartment = 3;
+}
+message SupplementaryInformation {
+    string destination = 1;
+    double baggageWeight = 2;
+    double cargoWeight = 3;
+    double mailWeight = 4;
+}

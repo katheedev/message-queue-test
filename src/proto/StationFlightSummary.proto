@@ -1,0 +1,17 @@
+syntax="proto3";
+package com.accelaero.ops.manager;
+message StationFlightSummary {
+    string flightSegmentReferenceId = 1;
+    string flightLegId = 2;
+    string flightNumber = 3;
+    string estDepartureDate = 4;                    // Format => "dd/MM/yyyy HH:mm" - Deprecated in latest changes since RSTD is not editable
+    string estArrivalDate = 5;                      // Format => "dd/MM/yyyy HH:mm" - Deprecated in latest changes since RSTA is not editable
+    repeated Delay delay = 6;
+    string opsReference = 7;
+    string doorClosed = 8;
+    string holdsClosed = 9;
+}
+message Delay {
+    string delayCode = 1;
+    int32 delayValue = 2;
+}

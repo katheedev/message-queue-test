@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Upload, Send, FileText, CheckCircle, XCircle, Clock, Play } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import protobuf from 'protobufjs';
 
 interface TestResult {
   id: string;
@@ -21,76 +22,209 @@ interface TestResult {
   message: string;
   response?: string;
   error?: string;
+  serializedBuffer?: string;
+  protoSchema?: string;
+}
+
+interface ConsumerConfig {
+  topic: string;
+  protoSchema: string;
+  messageType: string;
+  samplePayload: string;
+  sampleKey: string;
 }
 
 interface MessageTesterProps {
-  selectedConsumer?: { name: string; type: 'kafka' | 'jms' } | null;
+  selectedConsumer?: {
+    name: string;
+    type: 'kafka' | 'jms';
+    topic?: string;
+    protoSchema?: string;
+    messageType?: string;
+    samplePayload?: string;
+    sampleKey?: string;
+  } | null;
 }
 
 export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
   const [protoFile, setProtoFile] = useState<File | null>(null);
   const [protoContent, setProtoContent] = useState("");
-  const [protoInputMode, setProtoInputMode] = useState<'upload' | 'text'>('upload');
+  const [protoInputMode, setProtoInputMode] = useState<'upload' | 'text'>('text');
   const [jsonSample, setJsonSample] = useState("");
   const [messagePayload, setMessagePayload] = useState("");
   const [topic, setTopic] = useState("");
   const [queue, setQueue] = useState("");
-  const [headers, setHeaders] = useState("{}");
+  const [headers, setHeaders] = useState("");
+  const [messageType, setMessageType] = useState("");
+  const [key, setKey] = useState("");
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [isValidating, setIsValidating] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [validationResult, setValidationResult] = useState<{status: 'valid' | 'invalid' | null, message: string}>({
+  const [validationResult, setValidationResult] = useState<{ status: 'valid' | 'invalid' | null; message: string }>({
     status: null,
     message: ""
   });
   const { toast } = useToast();
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Load consumer config when selectedConsumer changes
+  useEffect(() => {
+    if (selectedConsumer?.name && selectedConsumer.type === 'kafka') {
+      // Load from localStorage if available, else use consumer props
+      const savedConfig = JSON.parse(localStorage.getItem(`consumerConfig_${selectedConsumer.name}`) || '{}');
+      setTopic(savedConfig.topic || selectedConsumer.topic || "");
+      setProtoContent(savedConfig.protoSchema || selectedConsumer.protoSchema || "");
+      setMessageType(savedConfig.messageType || selectedConsumer.messageType || "");
+      setJsonSample(savedConfig.samplePayload || selectedConsumer.samplePayload || "");
+      setMessagePayload(savedConfig.samplePayload || selectedConsumer.samplePayload || "");
+      setKey(savedConfig.sampleKey || selectedConsumer.sampleKey || "");
+      setHeaders(savedConfig.headers || "");
+    } else if (selectedConsumer?.type === 'jms') {
+      setQueue(savedConfig.queue || "");
+      setTopic("");
+      setProtoContent("");
+      setMessageType("");
+      setJsonSample("");
+      setMessagePayload("");
+      setKey("");
+      setHeaders("");
+    } else {
+      setTopic("");
+      setQueue("");
+      setProtoContent("");
+      setMessageType("");
+      setJsonSample("");
+      setMessagePayload("");
+      setKey("");
+      setHeaders("");
+    }
+  }, [selectedConsumer]);
+
+  // Save consumer config to localStorage
+  const saveConsumerConfig = () => {
+    if (selectedConsumer?.name && selectedConsumer.type === 'kafka') {
+      const config: ConsumerConfig & { headers?: string } = {
+        topic,
+        protoSchema: protoContent,
+        messageType,
+        samplePayload: jsonSample,
+        sampleKey: key,
+        headers
+      };
+      localStorage.setItem(`consumerConfig_${selectedConsumer.name}`, JSON.stringify(config));
+    } else if (selectedConsumer?.type === 'jms') {
+      localStorage.setItem(`consumerConfig_${selectedConsumer.name}`, JSON.stringify({ queue }));
+    }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       setProtoFile(file);
-      // Read file content and set it to protoContent for editing
       const reader = new FileReader();
       reader.onload = (e) => {
         const content = e.target?.result as string;
         setProtoContent(content);
+        setMessageType(file.name.replace('.proto', '')); // Auto-set messageType
+        saveConsumerConfig();
       };
       reader.readAsText(file);
-      
+
       toast({
         title: "Proto File Uploaded",
-        description: `${file.name} has been uploaded and loaded for editing.`,
+        description: `${file.name} has been uploaded and loaded for editing.`
       });
     }
   };
 
   const handleValidateMessage = async () => {
-    if (!protoContent || !jsonSample) {
+    if (!protoContent || !jsonSample || !messageType) {
       toast({
-        title: "Missing Requirements", 
-        description: "Please provide proto content and JSON sample.",
+        title: "Missing Requirements",
+        description: "Please provide proto content, JSON sample, and message type.",
         variant: "destructive"
       });
       return;
     }
 
     setIsValidating(true);
-    
-    // Simulate validation process
-    setTimeout(() => {
-      const isValid = Math.random() > 0.3; // 70% success rate for demo
-      setValidationResult({
-        status: isValid ? 'valid' : 'invalid',
-        message: isValid 
-          ? "Message structure is valid according to proto schema"
-          : "Message validation failed: Missing required field 'flightNumber'"
-      });
-      setIsValidating(false);
-      
-      if (isValid) {
-        setMessagePayload(jsonSample);
+
+    try {
+      // Load Protobuf schema
+      const root = await protobuf.parse(protoContent, { keepCase: true }).root;
+      const MessageType = root.lookupType(messageType);
+
+      if (!MessageType) {
+        setValidationResult({
+          status: 'invalid',
+          message: `Message type "${messageType}" not found in the provided schema`
+        });
+        toast({
+          title: "Validation Failed",
+          description: `Message type "${messageType}" not found in the provided schema`,
+          variant: "destructive"
+        });
+        setIsValidating(false);
+        return;
       }
-    }, 1500);
+
+      // Parse JSON sample
+      let payload;
+      try {
+        payload = JSON.parse(jsonSample);
+      } catch (error) {
+        setValidationResult({
+          status: 'invalid',
+          message: 'Invalid JSON format'
+        });
+        toast({
+          title: "Validation Failed",
+          description: "Invalid JSON format",
+          variant: "destructive"
+        });
+        setIsValidating(false);
+        return;
+      }
+
+      // Validate against schema
+      const validationError = MessageType.verify(payload);
+      if (validationError) {
+        setValidationResult({
+          status: 'invalid',
+          message: `Validation failed: ${validationError}`
+        });
+        toast({
+          title: "Validation Failed",
+          description: `Validation failed: ${validationError}`,
+          variant: "destructive"
+        });
+      } else {
+        // Serialize for preview
+        const message = MessageType.create(payload);
+        const buffer = MessageType.encode(message).finish();
+        setValidationResult({
+          status: 'valid',
+          message: `Message structure is valid according to proto schema. Serialized buffer length: ${buffer.length} bytes`
+        });
+        setMessagePayload(JSON.stringify(payload));
+        saveConsumerConfig();
+        toast({
+          title: "Validation Passed",
+          description: "Message structure is valid according to proto schema"
+        });
+      }
+    } catch (error) {
+      setValidationResult({
+        status: 'invalid',
+        message: `Validation error: ${error.message}`
+      });
+      toast({
+        title: "Validation Failed",
+        description: `Validation error: ${error.message}`,
+        variant: "destructive"
+      });
+    } finally {
+      setIsValidating(false);
+    }
   };
 
   const handleSendMessage = async () => {
@@ -121,45 +255,110 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
       return;
     }
 
+    if (selectedConsumer?.type === 'kafka' && (!protoContent || !messageType)) {
+      toast({
+        title: "Missing Schema",
+        description: "Please provide a Protobuf schema and message type.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsSending(true);
-    
+
     const testId = `test-${Date.now()}`;
+    let serializedBuffer: string | undefined;
+
+    // Pre-serialize for debugging
+    if (selectedConsumer?.type === 'kafka') {
+      try {
+        const root = await protobuf.parse(protoContent, { keepCase: true }).root;
+        const MessageType = root.lookupType(messageType);
+        const payload = JSON.parse(messagePayload);
+        const message = MessageType.create(payload);
+        const buffer = MessageType.encode(message).finish();
+        serializedBuffer = buffer.toString('hex');
+      } catch (error) {
+        console.error('Pre-serialization error:', error);
+      }
+    }
+
     const newTest: TestResult = {
       id: testId,
       timestamp: new Date().toISOString(),
       consumer: selectedConsumer?.name || "Unknown",
       type: selectedConsumer?.type || 'kafka',
       status: 'pending',
-      message: messagePayload
+      message: messagePayload,
+      serializedBuffer,
+      protoSchema: selectedConsumer?.type === 'kafka' ? protoContent : undefined
     };
-    
+
     setTestResults(prev => [newTest, ...prev]);
 
-    // Simulate message sending
-    setTimeout(() => {
-      const success = Math.random() > 0.2; // 80% success rate for demo
-      
-      setTestResults(prev => prev.map(test => 
-        test.id === testId 
+    try {
+      let parsedHeaders: Record<string, string> | undefined;
+      if (headers) {
+        try {
+          parsedHeaders = JSON.parse(headers);
+        } catch (error) {
+          throw new Error('Invalid headers JSON format');
+        }
+      }
+
+      const response = await fetch('http://localhost:3001/api/kafka/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config: JSON.parse(localStorage.getItem('kafkaConfig') || '{}'),
+          topic,
+          messagePayload,
+          protoSchema: protoContent,
+          messageType,
+          key
+        })
+      });
+
+      const result = await response.json();
+
+      setTestResults(prev => prev.map(test =>
+        test.id === testId
           ? {
               ...test,
-              status: success ? 'success' : 'error',
-              response: success ? "Message sent successfully" : undefined,
-              error: success ? undefined : "Connection timeout after 5 seconds"
+              status: result.status,
+              response: result.status === 'success' ? result.message : undefined,
+              error: result.status === 'error' ? result.message : undefined,
+              serializedBuffer: result.serializedBuffer || test.serializedBuffer
             }
           : test
       ));
-      
-      setIsSending(false);
-      
+
       toast({
-        title: success ? "Message Sent" : "Send Failed",
-        description: success 
-          ? "Message has been sent successfully" 
-          : "Failed to send message. Check connection.",
-        variant: success ? "default" : "destructive"
+        title: result.status === 'success' ? "Message Sent" : "Send Failed",
+        description: result.message,
+        variant: result.status === 'success' ? "default" : "destructive"
       });
-    }, 2000);
+
+      saveConsumerConfig();
+    } catch (error: any) {
+      setTestResults(prev => prev.map(test =>
+        test.id === testId
+          ? {
+              ...test,
+              status: 'error',
+              error: error.message || 'Failed to send message'
+            }
+          : test
+      ));
+
+      toast({
+        title: "Send Failed",
+        description: error.message || "Failed to send message. Check connection.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const getStatusIcon = (status: TestResult['status']) => {
@@ -199,9 +398,8 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
               <TabsTrigger value="validate">Validate & Test</TabsTrigger>
               <TabsTrigger value="results">Test Results</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="compose" className="space-y-6">
-              {/* Proto File Input */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">Proto File & Validation</h3>
@@ -210,8 +408,8 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="upload">Upload</SelectItem>
                       <SelectItem value="text">Text Input</SelectItem>
+                      <SelectItem value="upload">Upload</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -248,10 +446,20 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
                   <Textarea
                     id="protoContent"
                     value={protoContent}
-                    onChange={(e) => setProtoContent(e.target.value)}
-                    placeholder="syntax = &quot;proto3&quot;;\n\npackage aero.ops;\n\nmessage FlightUpdate {\n  string flight_number = 1;\n  string departure = 2;\n  string arrival = 3;\n  string timestamp = 4;\n}"
+                    onChange={(e) => { setProtoContent(e.target.value); saveConsumerConfig(); }}
+                    placeholder='syntax = "proto3";\nmessage OtherSystemsFlightUpdateInternal {\n  repeated string flightReferences = 1;\n  string originFlightReference = 2;\n  bool isAdhoc = 3;\n  bool isFlightTimeUpdate = 4;\n  bool isRegistrationUpdate = 5;\n}'
                     rows={12}
                     className="font-mono text-sm"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="messageType">Message Type</Label>
+                  <Input
+                    id="messageType"
+                    value={messageType}
+                    onChange={(e) => { setMessageType(e.target.value); saveConsumerConfig(); }}
+                    placeholder="OtherSystemsFlightUpdateInternal"
                   />
                 </div>
 
@@ -260,14 +468,14 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
                   <Textarea
                     id="jsonSample"
                     value={jsonSample}
-                    onChange={(e) => setJsonSample(e.target.value)}
-                    placeholder='{"flightNumber": "AA123", "departure": "JFK", "arrival": "LAX", "timestamp": "2024-01-15T14:30:00Z"}'
+                    onChange={(e) => { setJsonSample(e.target.value); saveConsumerConfig(); }}
+                    placeholder='{"flightReferences": ["okcEPEt", "IQe"], "originFlightReference": "7oFfs8WGv", "isAdhoc": true, "isFlightTimeUpdate": false, "isRegistrationUpdate": true}'
                     rows={6}
                   />
                 </div>
 
-                <Button 
-                  onClick={handleValidateMessage} 
+                <Button
+                  onClick={handleValidateMessage}
                   disabled={isValidating}
                   className="flex items-center gap-2"
                 >
@@ -286,8 +494,8 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
 
                 {validationResult.status && (
                   <div className={`p-3 rounded border ${
-                    validationResult.status === 'valid' 
-                      ? 'bg-success/10 border-success text-success' 
+                    validationResult.status === 'valid'
+                      ? 'bg-success/10 border-success text-success'
                       : 'bg-destructive/10 border-destructive text-destructive'
                   }`}>
                     <div className="flex items-center gap-2">
@@ -307,38 +515,48 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
             </TabsContent>
 
             <TabsContent value="validate" className="space-y-6">
-              {/* Message Configuration */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Message Configuration</h3>
-                
+
                 {selectedConsumer?.type === 'kafka' ? (
-                  <div className="space-y-2">
-                    <Label htmlFor="topic">Kafka Topic</Label>
-                    <Input
-                      id="topic"
-                      value={topic}
-                      onChange={(e) => setTopic(e.target.value)}
-                      placeholder="aero.ops.flight.updates"
-                    />
-                  </div>
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="topic">Kafka Topic</Label>
+                      <Input
+                        id="topic"
+                        value={topic}
+                        onChange={(e) => { setTopic(e.target.value); saveConsumerConfig(); }}
+                        placeholder="aeroops_flight_update_internal_topic"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="key">Message Key</Label>
+                      <Input
+                        id="key"
+                        value={key}
+                        onChange={(e) => { setKey(e.target.value); saveConsumerConfig(); }}
+                        placeholder="flight-update-key-123"
+                      />
+                    </div>
+                  </>
                 ) : (
                   <div className="space-y-2">
                     <Label htmlFor="queue">JMS Queue</Label>
                     <Input
                       id="queue"
                       value={queue}
-                      onChange={(e) => setQueue(e.target.value)}
+                      onChange={(e) => { setQueue(e.target.value); saveConsumerConfig(); }}
                       placeholder="aero.ops.acars.messages"
                     />
                   </div>
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="headers">Message Headers (JSON)</Label>
+                  <Label htmlFor="headers">Message Headers (JSON, Optional)</Label>
                   <Textarea
                     id="headers"
                     value={headers}
-                    onChange={(e) => setHeaders(e.target.value)}
+                    onChange={(e) => { setHeaders(e.target.value); saveConsumerConfig(); }}
                     placeholder='{"messageType": "flightUpdate", "version": "1.0"}'
                     rows={3}
                   />
@@ -349,14 +567,14 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
                   <Textarea
                     id="messagePayload"
                     value={messagePayload}
-                    onChange={(e) => setMessagePayload(e.target.value)}
-                    placeholder="Enter your message payload here..."
+                    onChange={(e) => { setMessagePayload(e.target.value); saveConsumerConfig(); }}
+                    placeholder='{"flightReferences": ["okcEPEt", "IQe"], "originFlightReference": "7oFfs8WGv", "isAdhoc": true, "isFlightTimeUpdate": false, "isRegistrationUpdate": true}'
                     rows={8}
                   />
                 </div>
 
-                <Button 
-                  onClick={handleSendMessage} 
+                <Button
+                  onClick={handleSendMessage}
                   disabled={isSending}
                   className="flex items-center gap-2"
                 >
@@ -380,7 +598,7 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
                 <h3 className="text-lg font-semibold">Test Results</h3>
                 <Badge variant="outline">{testResults.length} tests</Badge>
               </div>
-              
+
               <ScrollArea className="h-96 w-full">
                 <div className="space-y-3">
                   {testResults.length === 0 ? (
@@ -422,6 +640,32 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
                               {JSON.stringify(JSON.parse(result.message || "{}"), null, 2)}
                             </pre>
                           </details>
+                          {result.serializedBuffer && (
+                            <>
+                              <Separator className="my-3" />
+                              <details className="group">
+                                <summary className="cursor-pointer text-sm font-medium">
+                                  Serialized Buffer (Hex)
+                                </summary>
+                                <pre className="mt-2 text-xs bg-muted p-2 rounded overflow-x-auto">
+                                  {result.serializedBuffer}
+                                </pre>
+                              </details>
+                            </>
+                          )}
+                          {result.protoSchema && (
+                            <>
+                              <Separator className="my-3" />
+                              <details className="group">
+                                <summary className="cursor-pointer text-sm font-medium">
+                                  Protobuf Schema
+                                </summary>
+                                <pre className="mt-2 text-xs bg-muted p-2 rounded overflow-x-auto">
+                                  {result.protoSchema}
+                                </pre>
+                              </details>
+                            </>
+                          )}
                         </CardContent>
                       </Card>
                     ))

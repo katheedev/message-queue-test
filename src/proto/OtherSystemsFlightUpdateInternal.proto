@@ -1,0 +1,8 @@
+syntax = "proto3";
+message OtherSystemsFlightUpdateInternal {
+  repeated string flightReferences = 1;
+  string originFlightReference = 2;
+  bool isAdhoc = 3;
+  bool isFlightTimeUpdate = 4;
+  bool isRegistrationUpdate = 5;
+}
