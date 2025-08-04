@@ -29,6 +29,8 @@ interface MessageTesterProps {
 
 export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
   const [protoFile, setProtoFile] = useState<File | null>(null);
+  const [protoContent, setProtoContent] = useState("");
+  const [protoInputMode, setProtoInputMode] = useState<'upload' | 'text'>('upload');
   const [jsonSample, setJsonSample] = useState("");
   const [messagePayload, setMessagePayload] = useState("");
   const [topic, setTopic] = useState("");
@@ -47,18 +49,26 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
     const file = event.target.files?.[0];
     if (file) {
       setProtoFile(file);
+      // Read file content and set it to protoContent for editing
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        setProtoContent(content);
+      };
+      reader.readAsText(file);
+      
       toast({
         title: "Proto File Uploaded",
-        description: `${file.name} has been uploaded successfully.`,
+        description: `${file.name} has been uploaded and loaded for editing.`,
       });
     }
   };
 
   const handleValidateMessage = async () => {
-    if (!protoFile || !jsonSample) {
+    if (!protoContent || !jsonSample) {
       toast({
-        title: "Missing Requirements",
-        description: "Please upload a proto file and provide JSON sample.",
+        title: "Missing Requirements", 
+        description: "Please provide proto content and JSON sample.",
         variant: "destructive"
       });
       return;
@@ -191,32 +201,58 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
             </TabsList>
             
             <TabsContent value="compose" className="space-y-6">
-              {/* Proto File Upload */}
+              {/* Proto File Input */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Proto File & Validation</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="protoFile">Upload Proto File</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="protoFile"
-                        type="file"
-                        accept=".proto"
-                        onChange={handleFileUpload}
-                        className="file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-muted file:text-muted-foreground"
-                      />
-                      {protoFile && <CheckCircle className="h-5 w-5 text-success" />}
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Proto File & Validation</h3>
+                  <Select value={protoInputMode} onValueChange={(value: 'upload' | 'text') => setProtoInputMode(value)}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="upload">Upload</SelectItem>
+                      <SelectItem value="text">Text Input</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {protoInputMode === 'upload' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="protoFile">Upload Proto File</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="protoFile"
+                          type="file"
+                          accept=".proto"
+                          onChange={handleFileUpload}
+                          className="file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-muted file:text-muted-foreground"
+                        />
+                        {protoFile && <CheckCircle className="h-5 w-5 text-success" />}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Proto File Status</Label>
+                      <div className="flex items-center gap-2 p-2 rounded border bg-muted">
+                        <FileText className="h-4 w-4" />
+                        <span className="text-sm">
+                          {protoFile ? protoFile.name : "No file selected"}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Proto File Status</Label>
-                    <div className="flex items-center gap-2 p-2 rounded border bg-muted">
-                      <FileText className="h-4 w-4" />
-                      <span className="text-sm">
-                        {protoFile ? protoFile.name : "No file selected"}
-                      </span>
-                    </div>
-                  </div>
+                ) : null}
+
+                <div className="space-y-2">
+                  <Label htmlFor="protoContent">Proto File Content</Label>
+                  <Textarea
+                    id="protoContent"
+                    value={protoContent}
+                    onChange={(e) => setProtoContent(e.target.value)}
+                    placeholder="syntax = &quot;proto3&quot;;\n\npackage aero.ops;\n\nmessage FlightUpdate {\n  string flight_number = 1;\n  string departure = 2;\n  string arrival = 3;\n  string timestamp = 4;\n}"
+                    rows={12}
+                    className="font-mono text-sm"
+                  />
                 </div>
 
                 <div className="space-y-2">
