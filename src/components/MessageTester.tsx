@@ -24,14 +24,16 @@ interface TestResult {
   error?: string;
   serializedBuffer?: string;
   protoSchema?: string;
+  messageFormat?: 'protobuf' | 'json' | 'string';
 }
 
 interface ConsumerConfig {
-  topic: string;
-  protoSchema: string;
-  messageType: string;
-  samplePayload: string;
-  sampleKey: string;
+  topic?: string;
+  protoSchema?: string;
+  messageType?: string;
+  samplePayload?: string;
+  sampleKey?: string;
+  messageFormat?: 'protobuf' | 'json' | 'string';
 }
 
 interface MessageTesterProps {
@@ -43,6 +45,7 @@ interface MessageTesterProps {
     messageType?: string;
     samplePayload?: string;
     sampleKey?: string;
+    messageFormat?: 'protobuf' | 'json' | 'string';
   } | null;
 }
 
@@ -79,6 +82,7 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
       setKey(savedConfig.sampleKey || selectedConsumer.sampleKey || "");
       setHeaders(savedConfig.headers || "");
     } else if (selectedConsumer?.type === 'jms') {
+      const savedConfig = JSON.parse(localStorage.getItem(`consumerConfig_${selectedConsumer.name}`) || '{}');
       setQueue(savedConfig.queue || "");
       setTopic("");
       setProtoContent("");
@@ -101,18 +105,18 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
 
   // Save consumer config to localStorage
   const saveConsumerConfig = () => {
-    if (selectedConsumer?.name && selectedConsumer.type === 'kafka') {
-      const config: ConsumerConfig & { headers?: string } = {
+    if (selectedConsumer?.name) {
+      const config: ConsumerConfig & { headers?: string; queue?: string } = {
         topic,
-        protoSchema: protoContent,
-        messageType,
+        protoSchema: selectedConsumer?.messageFormat === 'protobuf' ? protoContent : undefined,
+        messageType: selectedConsumer?.messageFormat === 'protobuf' ? messageType : undefined,
         samplePayload: jsonSample,
         sampleKey: key,
-        headers
+        headers,
+        queue: selectedConsumer?.type === 'jms' ? queue : undefined,
+        messageFormat: selectedConsumer?.messageFormat
       };
       localStorage.setItem(`consumerConfig_${selectedConsumer.name}`, JSON.stringify(config));
-    } else if (selectedConsumer?.type === 'jms') {
-      localStorage.setItem(`consumerConfig_${selectedConsumer.name}`, JSON.stringify({ queue }));
     }
   };
 
@@ -137,10 +141,19 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
   };
 
   const handleValidateMessage = async () => {
-    if (!protoContent || !jsonSample || !messageType) {
+    if (!jsonSample) {
+      toast({
+        title: "Missing Payload",
+        description: "Please provide a JSON sample or message payload.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (selectedConsumer?.messageFormat === 'protobuf' && (!protoContent || !messageType)) {
       toast({
         title: "Missing Requirements",
-        description: "Please provide proto content, JSON sample, and message type.",
+        description: "Please provide proto content and message type for Protobuf messages.",
         variant: "destructive"
       });
       return;
@@ -149,67 +162,106 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
     setIsValidating(true);
 
     try {
-      // Load Protobuf schema
-      const root = await protobuf.parse(protoContent, { keepCase: true }).root;
-      const MessageType = root.lookupType(messageType);
+      if (selectedConsumer?.messageFormat === 'protobuf') {
+        // Load Protobuf schema
+        const root = await protobuf.parse(protoContent, { keepCase: true }).root;
+        const MessageType = root.lookupType(messageType);
 
-      if (!MessageType) {
-        setValidationResult({
-          status: 'invalid',
-          message: `Message type "${messageType}" not found in the provided schema`
-        });
-        toast({
-          title: "Validation Failed",
-          description: `Message type "${messageType}" not found in the provided schema`,
-          variant: "destructive"
-        });
-        setIsValidating(false);
-        return;
-      }
+        if (!MessageType) {
+          setValidationResult({
+            status: 'invalid',
+            message: `Message type "${messageType}" not found in the provided schema`
+          });
+          toast({
+            title: "Validation Failed",
+            description: `Message type "${messageType}" not found in the provided schema`,
+            variant: "destructive"
+          });
+          setIsValidating(false);
+          return;
+        }
 
-      // Parse JSON sample
-      let payload;
-      try {
-        payload = JSON.parse(jsonSample);
-      } catch (error) {
-        setValidationResult({
-          status: 'invalid',
-          message: 'Invalid JSON format'
-        });
-        toast({
-          title: "Validation Failed",
-          description: "Invalid JSON format",
-          variant: "destructive"
-        });
-        setIsValidating(false);
-        return;
-      }
+        // Parse JSON sample
+        let payload;
+        try {
+          payload = JSON.parse(jsonSample);
+        } catch (error) {
+          setValidationResult({
+            status: 'invalid',
+            message: 'Invalid JSON format'
+          });
+          toast({
+            title: "Validation Failed",
+            description: "Invalid JSON format",
+            variant: "destructive"
+          });
+          setIsValidating(false);
+          return;
+        }
 
-      // Validate against schema
-      const validationError = MessageType.verify(payload);
-      if (validationError) {
-        setValidationResult({
-          status: 'invalid',
-          message: `Validation failed: ${validationError}`
-        });
-        toast({
-          title: "Validation Failed",
-          description: `Validation failed: ${validationError}`,
-          variant: "destructive"
-        });
+        // Validate against schema
+        const validationError = MessageType.verify(payload);
+        if (validationError) {
+          setValidationResult({
+            status: 'invalid',
+            message: `Validation failed: ${validationError}`
+          });
+          toast({
+            title: "Validation Failed",
+            description: `Validation failed: ${validationError}`,
+            variant: "destructive"
+          });
+        } else {
+          // Serialize for preview
+          const message = MessageType.create(payload);
+          const buffer = MessageType.encode(message).finish();
+          setValidationResult({
+            status: 'valid',
+            message: `Message structure is valid according to proto schema. Serialized buffer length: ${buffer.length} bytes`
+          });
+          setMessagePayload(JSON.stringify(payload));
+          saveConsumerConfig();
+          toast({
+            title: "Validation Passed",
+            description: "Message structure is valid according to proto schema"
+          });
+        }
+      } else if (selectedConsumer?.messageFormat === 'json') {
+        // Validate JSON syntax
+        try {
+          JSON.parse(jsonSample);
+          setValidationResult({
+            status: 'valid',
+            message: 'JSON payload is valid'
+          });
+          setMessagePayload(jsonSample);
+          saveConsumerConfig();
+          toast({
+            title: "Validation Passed",
+            description: "JSON payload is valid"
+          });
+        } catch (error) {
+          setValidationResult({
+            status: 'invalid',
+            message: 'Invalid JSON format'
+          });
+          toast({
+            title: "Validation Failed",
+            description: "Invalid JSON format",
+            variant: "destructive"
+          });
+        }
       } else {
-        // Serialize for preview
-        const message = MessageType.create(payload);
-        const buffer = MessageType.encode(message).finish();
+        // String format: no validation needed
         setValidationResult({
           status: 'valid',
-          message: `Message structure is valid according to proto schema. Serialized buffer length: ${buffer.length} bytes`
+          message: 'String payload is valid'
         });
-        setMessagePayload(JSON.stringify(payload));
+        setMessagePayload(jsonSample);
         saveConsumerConfig();
         toast({
           title: "Validation Passed",
-          description: "Message structure is valid according to proto schema"
+          description: "String payload is valid"
         });
       }
     } catch (error) {
@@ -255,7 +307,7 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
       return;
     }
 
-    if (selectedConsumer?.type === 'kafka' && (!protoContent || !messageType)) {
+    if (selectedConsumer?.type === 'kafka' && selectedConsumer?.messageFormat === 'protobuf' && (!protoContent || !messageType)) {
       toast({
         title: "Missing Schema",
         description: "Please provide a Protobuf schema and message type.",
@@ -269,8 +321,8 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
     const testId = `test-${Date.now()}`;
     let serializedBuffer: string | undefined;
 
-    // Pre-serialize for debugging
-    if (selectedConsumer?.type === 'kafka') {
+    // Pre-serialize for debugging (Protobuf only)
+    if (selectedConsumer?.type === 'kafka' && selectedConsumer?.messageFormat === 'protobuf') {
       try {
         const root = await protobuf.parse(protoContent, { keepCase: true }).root;
         const MessageType = root.lookupType(messageType);
@@ -290,8 +342,9 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
       type: selectedConsumer?.type || 'kafka',
       status: 'pending',
       message: messagePayload,
-      serializedBuffer,
-      protoSchema: selectedConsumer?.type === 'kafka' ? protoContent : undefined
+      serializedBuffer: selectedConsumer?.messageFormat === 'protobuf' ? serializedBuffer : undefined,
+      protoSchema: selectedConsumer?.messageFormat === 'protobuf' ? protoContent : undefined,
+      messageFormat: selectedConsumer?.messageFormat
     };
 
     setTestResults(prev => [newTest, ...prev]);
@@ -306,16 +359,26 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
         }
       }
 
+      let payload = messagePayload;
+      if (selectedConsumer?.messageFormat === 'json') {
+        try {
+          JSON.parse(messagePayload); // Ensure valid JSON
+        } catch (error) {
+          throw new Error('Invalid JSON payload');
+        }
+      }
+
       const response = await fetch('http://localhost:3001/api/kafka/send-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           config: JSON.parse(localStorage.getItem('kafkaConfig') || '{}'),
           topic,
-          messagePayload,
-          protoSchema: protoContent,
-          messageType,
-          key
+          messagePayload: payload,
+          protoSchema: selectedConsumer?.messageFormat === 'protobuf' ? protoContent : undefined,
+          messageType: selectedConsumer?.messageFormat === 'protobuf' ? messageType : undefined,
+          key,
+          messageFormat: selectedConsumer?.messageFormat
         })
       });
 
@@ -401,75 +464,83 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
 
             <TabsContent value="compose" className="space-y-6">
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Proto File & Validation</h3>
-                  <Select value={protoInputMode} onValueChange={(value: 'upload' | 'text') => setProtoInputMode(value)}>
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="text">Text Input</SelectItem>
-                      <SelectItem value="upload">Upload</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {protoInputMode === 'upload' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="protoFile">Upload Proto File</Label>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          id="protoFile"
-                          type="file"
-                          accept=".proto"
-                          onChange={handleFileUpload}
-                          className="file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-muted file:text-muted-foreground"
-                        />
-                        {protoFile && <CheckCircle className="h-5 w-5 text-success" />}
-                      </div>
+                {selectedConsumer?.type === 'kafka' && selectedConsumer?.messageFormat === 'protobuf' && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Proto File & Validation</h3>
+                      <Select value={protoInputMode} onValueChange={(value: 'upload' | 'text') => setProtoInputMode(value)}>
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="text">Text Input</SelectItem>
+                          <SelectItem value="upload">Upload</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Proto File Status</Label>
-                      <div className="flex items-center gap-2 p-2 rounded border bg-muted">
-                        <FileText className="h-4 w-4" />
-                        <span className="text-sm">
-                          {protoFile ? protoFile.name : "No file selected"}
-                        </span>
+
+                    {protoInputMode === 'upload' ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="protoFile">Upload Proto File</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              id="protoFile"
+                              type="file"
+                              accept=".proto"
+                              onChange={handleFileUpload}
+                              className="file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-muted file:text-muted-foreground"
+                            />
+                            {protoFile && <CheckCircle className="h-5 w-5 text-success" />}
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Proto File Status</Label>
+                          <div className="flex items-center gap-2 p-2 rounded border bg-muted">
+                            <FileText className="h-4 w-4" />
+                            <span className="text-sm">
+                              {protoFile ? protoFile.name : "No file selected"}
+                            </span>
+                          </div>
+                        </div>
                       </div>
+                    ) : null}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="protoContent">Proto File Content</Label>
+                      <Textarea
+                        id="protoContent"
+                        value={protoContent}
+                        onChange={(e) => { setProtoContent(e.target.value); saveConsumerConfig(); }}
+                        placeholder='syntax = "proto3";\nmessage OtherSystemsFlightUpdateInternal {\n  repeated string flightReferences = 1;\n  string originFlightReference = 2;\n  bool isAdhoc = 3;\n  bool isFlightTimeUpdate = 4;\n  bool isRegistrationUpdate = 5;\n}'
+                        rows={12}
+                        className="font-mono text-sm"
+                      />
                     </div>
-                  </div>
-                ) : null}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="messageType">Message Type</Label>
+                      <Input
+                        id="messageType"
+                        value={messageType}
+                        onChange={(e) => { setMessageType(e.target.value); saveConsumerConfig(); }}
+                        placeholder="OtherSystemsFlightUpdateInternal"
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="protoContent">Proto File Content</Label>
-                  <Textarea
-                    id="protoContent"
-                    value={protoContent}
-                    onChange={(e) => { setProtoContent(e.target.value); saveConsumerConfig(); }}
-                    placeholder='syntax = "proto3";\nmessage OtherSystemsFlightUpdateInternal {\n  repeated string flightReferences = 1;\n  string originFlightReference = 2;\n  bool isAdhoc = 3;\n  bool isFlightTimeUpdate = 4;\n  bool isRegistrationUpdate = 5;\n}'
-                    rows={12}
-                    className="font-mono text-sm"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="messageType">Message Type</Label>
-                  <Input
-                    id="messageType"
-                    value={messageType}
-                    onChange={(e) => { setMessageType(e.target.value); saveConsumerConfig(); }}
-                    placeholder="OtherSystemsFlightUpdateInternal"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="jsonSample">JSON Sample for Validation</Label>
+                  <Label htmlFor="jsonSample">Message Payload</Label>
                   <Textarea
                     id="jsonSample"
                     value={jsonSample}
                     onChange={(e) => { setJsonSample(e.target.value); saveConsumerConfig(); }}
-                    placeholder='{"flightReferences": ["okcEPEt", "IQe"], "originFlightReference": "7oFfs8WGv", "isAdhoc": true, "isFlightTimeUpdate": false, "isRegistrationUpdate": true}'
+                    placeholder={
+                      selectedConsumer?.messageFormat === 'protobuf' || selectedConsumer?.messageFormat === 'json'
+                        ? '{"flightReferences": ["okcEPEt", "IQe"], "originFlightReference": "7oFfs8WGv", "isAdhoc": true, "isFlightTimeUpdate": false, "isRegistrationUpdate": true}'
+                        : 'Raw message string'
+                    }
                     rows={6}
                   />
                 </div>
@@ -568,7 +639,11 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
                     id="messagePayload"
                     value={messagePayload}
                     onChange={(e) => { setMessagePayload(e.target.value); saveConsumerConfig(); }}
-                    placeholder='{"flightReferences": ["okcEPEt", "IQe"], "originFlightReference": "7oFfs8WGv", "isAdhoc": true, "isFlightTimeUpdate": false, "isRegistrationUpdate": true}'
+                    placeholder={
+                      selectedConsumer?.messageFormat === 'protobuf' || selectedConsumer?.messageFormat === 'json'
+                        ? '{"flightReferences": ["okcEPEt", "IQe"], "originFlightReference": "7oFfs8WGv", "isAdhoc": true, "isFlightTimeUpdate": false, "isRegistrationUpdate": true}'
+                        : 'Raw message string'
+                    }
                     rows={8}
                   />
                 </div>
@@ -618,6 +693,11 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
                                 <Badge variant="outline" className="text-xs">
                                   {result.type.toUpperCase()}
                                 </Badge>
+                                {result.messageFormat && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {result.messageFormat.toUpperCase()}
+                                  </Badge>
+                                )}
                                 {getStatusBadge(result.status)}
                               </div>
                               <p className="text-sm text-muted-foreground">
@@ -637,7 +717,9 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
                               Message Payload
                             </summary>
                             <pre className="mt-2 text-xs bg-muted p-2 rounded overflow-x-auto">
-                              {JSON.stringify(JSON.parse(result.message || "{}"), null, 2)}
+                              {result.messageFormat === 'string'
+                                ? result.message
+                                : JSON.stringify(JSON.parse(result.message || "{}"), null, 2)}
                             </pre>
                           </details>
                           {result.serializedBuffer && (

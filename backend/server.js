@@ -158,40 +158,10 @@ app.post('/api/kafka/consumer-groups', async (req, res) => {
 
 // Send Kafka message
 app.post('/api/kafka/send-message', async (req, res) => {
-  const { config, topic, messagePayload, protoSchema, messageType, key } = req.body;
-
-  // Validate input
-  if (!config || !config.bootstrapServers) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Invalid configuration: bootstrapServers is required'
-    });
-  }
-
-  if (!protoSchema) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Protobuf schema is required'
-    });
-  }
-
-  if (!messageType) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Message type name is required'
-    });
-  }
-
-  if (key !== undefined && typeof key !== 'string') {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Key must be a string if provided'
-    });
-  }
+  const { config, topic, messagePayload, protoSchema, messageType, key, messageFormat } = req.body;
 
   try {
-    // Initialize Kafka client
-    const kafka = new Kafka({
+        const kafka = new Kafka({
       brokers: config.bootstrapServers.split(',').map(s => s.trim()),
       ...(config.securityProtocol !== 'PLAINTEXT' && {
         ssl: config.securityProtocol === 'SSL' ? true : undefined,
@@ -202,60 +172,63 @@ app.post('/api/kafka/send-message', async (req, res) => {
         } : undefined
       })
     });
-
-    // Load Protobuf schema
-    const root = await protobuf.parse(protoSchema, { keepCase: true }).root;
-    const MessageType = root.lookupType(messageType);
-
-    if (!MessageType) {
-      return res.status(400).json({
-        status: 'error',
-        message: `Message type "${messageType}" not found in the provided schema`
-      });
-    }
-
-    // Parse and validate message payload
-    let payload;
-    try {
-      payload = JSON.parse(messagePayload);
-      console.log('Parsed payload:', JSON.stringify(payload, null, 2));
-    } catch (error) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Invalid message payload: Must be valid JSON'
-      });
-    }
-
-    // Validate against schema
-    const validationError = MessageType.verify(payload);
-    if (validationError) {
-      return res.status(400).json({
-        status: 'error',
-        message: `Payload validation failed: ${validationError}`
-      });
-    }
-
-    // Create and serialize message
-    const message = MessageType.create(payload);
-    const buffer = MessageType.encode(message).finish();
-    console.log('Serialized buffer length:', buffer.length);
-    console.log('Serialized buffer (hex):', buffer.toString('hex'));
-
-    // Initialize Kafka producer
     const producer = kafka.producer();
+
     await producer.connect();
 
-    // Send message
+    let value;
+    let serializedBuffer;
+
+    if (messageFormat === 'protobuf') {
+      if (!protoSchema || !messageType) {
+        throw new Error('Missing protoSchema or messageType for Protobuf message');
+      }
+
+      const root = await protobuf.parse(protoSchema, { keepCase: true }).root;
+      const MessageType = root.lookupType(messageType);
+
+      if (!MessageType) {
+        throw new Error(`Message type "${messageType}" not found in schema`);
+      }
+
+      let payload;
+      try {
+        payload = JSON.parse(messagePayload);
+      } catch (error) {
+        throw new Error('Invalid JSON payload');
+      }
+
+      const validationError = MessageType.verify(payload);
+      if (validationError) {
+        throw new Error(`Validation failed: ${validationError}`);
+      }
+
+      const message = MessageType.create(payload);
+      value = MessageType.encode(message).finish();
+      serializedBuffer = value.toString('hex');
+    } else if (messageFormat === 'json') {
+      try {
+        value = Buffer.from(JSON.stringify(JSON.parse(messagePayload)));
+      } catch (error) {
+        throw new Error('Invalid JSON payload');
+      }
+    } else if (messageFormat === 'string') {
+      value = Buffer.from(messagePayload);
+    } else {
+      throw new Error('Invalid messageFormat. Must be "protobuf", "json", or "string"');
+    }
+
     await producer.send({
       topic,
-      messages: [{ key: key || null, value: buffer, headers: {} }]
+      messages: [{ key: key || null, value }]
     });
 
     await producer.disconnect();
+
     res.json({
       status: 'success',
       message: 'Message sent successfully',
-      serializedBuffer: buffer.toString('hex') // Return buffer for debugging
+      serializedBuffer
     });
   } catch (error) {
     console.error('Error sending message:', error);
@@ -266,4 +239,7 @@ app.post('/api/kafka/send-message', async (req, res) => {
   }
 });
 
-app.listen(3001, () => console.log('Server running on port 3001'));
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

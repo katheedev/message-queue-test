@@ -1,6 +1,8 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Play, Settings, Activity } from "lucide-react";
 
 // Import proto files as raw text
@@ -21,7 +23,9 @@ interface Consumer {
   messageType?: string;
   samplePayload?: string;
   sampleKey?: string;
+  messageFormat?: 'protobuf' | 'json' | 'string';
 }
+
 
 const kafkaConsumers: Consumer[] = [
   {
@@ -30,8 +34,7 @@ const kafkaConsumers: Consumer[] = [
     status: "active",
     lastTested: "2024-01-15 14:30",
     topic: "aeroops_aircraft_maintenance_topic",
-    protoSchema: "", // Add proto file content if applicable
-    messageType: "AircraftMaintenance",
+    messageFormat: "json",
     samplePayload: JSON.stringify({ maintenanceId: "AM123", aircraftId: "A789", status: "scheduled" }, null, 2),
     sampleKey: "maintenance-key-123"
   },
@@ -39,9 +42,10 @@ const kafkaConsumers: Consumer[] = [
     name: "DcsFlightUpdateInternalConsumer",
     type: "kafka",
     status: "active",
-    topic: "aeroops_dcs_flight_update_topic",
+    topic: "aeroops_dcs_flight_update_internal_topic",
     protoSchema: DcsFlightUpdateInternal,
     messageType: "DcsFlightUpdateInternal",
+    messageFormat: "protobuf",
     samplePayload: JSON.stringify({
       flightReferences: ["okcEPEt", "IQe"],
       userName: "7oFfs8WGv"
@@ -54,8 +58,7 @@ const kafkaConsumers: Consumer[] = [
     status: "active",
     lastTested: "2024-01-15 13:45",
     topic: "aeroops_delay_mapping_topic",
-    protoSchema: "", // Add proto file content
-    messageType: "DelayMapping",
+    messageFormat: "json",
     samplePayload: JSON.stringify({ flightId: "DM789", delayMinutes: 30 }, null, 2),
     sampleKey: "delay-key-789"
   },
@@ -64,8 +67,7 @@ const kafkaConsumers: Consumer[] = [
     type: "kafka",
     status: "error",
     topic: "aeroops_delay_prediction_topic",
-    protoSchema: "", // Add proto file content
-    messageType: "DelayPrediction",
+    messageFormat: "json",
     samplePayload: JSON.stringify({ flightId: "DP123", predictedDelay: 45 }, null, 2),
     sampleKey: "prediction-key-123"
   },
@@ -77,6 +79,7 @@ const kafkaConsumers: Consumer[] = [
     topic: "aeroline_acars_data_topic",
     protoSchema: AcarsMessage,
     messageType: "AcarsMessage",
+    messageFormat: "protobuf",
     samplePayload: JSON.stringify({ messageId: "ACARS456", content: "flight update" }, null, 2),
     sampleKey: "acars-key-456"
   },
@@ -85,8 +88,7 @@ const kafkaConsumers: Consumer[] = [
     type: "kafka",
     status: "active",
     topic: "aeroops_flight_fuel_topic",
-    protoSchema: "", // Add proto file content
-    messageType: "FlightFuel",
+    messageFormat: "json",
     samplePayload: JSON.stringify({ flightId: "FF789", fuelAmount: 5000 }, null, 2),
     sampleKey: "fuel-key-789"
   },
@@ -95,8 +97,7 @@ const kafkaConsumers: Consumer[] = [
     type: "kafka",
     status: "inactive",
     topic: "aeroops_inbound_outbound_topic",
-    protoSchema: "", // Add proto file content
-    messageType: "InBoundOutBound",
+    messageFormat: "json",
     samplePayload: JSON.stringify({ flightId: "IO123", direction: "inbound" }, null, 2),
     sampleKey: "inout-key-123"
   },
@@ -106,8 +107,7 @@ const kafkaConsumers: Consumer[] = [
     status: "active",
     lastTested: "2024-01-15 14:20",
     topic: "aeroops_flight_connect_topic",
-    protoSchema: "", // Add proto file content
-    messageType: "FlightConnect",
+    messageFormat: "json",
     samplePayload: JSON.stringify({ flightId: "FC456", status: "connected" }, null, 2),
     sampleKey: "connect-key-456"
   },
@@ -116,8 +116,7 @@ const kafkaConsumers: Consumer[] = [
     type: "kafka",
     status: "active",
     topic: "aeroops_flight_eet_topic",
-    protoSchema: "", // Add proto file content
-    messageType: "FlightEET",
+    messageFormat: "json",
     samplePayload: JSON.stringify({ flightId: "EET789", estimatedTime: "2024-01-15T15:00:00Z" }, null, 2),
     sampleKey: "eet-key-789"
   },
@@ -126,8 +125,7 @@ const kafkaConsumers: Consumer[] = [
     type: "kafka",
     status: "inactive",
     topic: "aeroops_flight_key_update_topic",
-    protoSchema: "", // Add proto file content
-    messageType: "FlightKeyUpdate",
+    messageFormat: "json",
     samplePayload: JSON.stringify({ flightId: "FKU123", key: "new-key" }, null, 2),
     sampleKey: "key-update-123"
   },
@@ -137,8 +135,7 @@ const kafkaConsumers: Consumer[] = [
     status: "active",
     lastTested: "2024-01-15 14:10",
     topic: "aeroops_flight_passenger_topic",
-    protoSchema: "", // Add proto file content
-    messageType: "FlightPassenger",
+    messageFormat: "json",
     samplePayload: JSON.stringify({ flightId: "FP456", passengerCount: 150 }, null, 2),
     sampleKey: "passenger-key-456"
   },
@@ -147,8 +144,7 @@ const kafkaConsumers: Consumer[] = [
     type: "kafka",
     status: "active",
     topic: "aeroops_flight_updates",
-    protoSchema: "", // ADD proto
-    messageType: "FlightUpdate",
+    messageFormat: "json",
     samplePayload: JSON.stringify({
       flightNumber: "AA123",
       departure: "JFK",
@@ -162,8 +158,7 @@ const kafkaConsumers: Consumer[] = [
     type: "kafka",
     status: "inactive",
     topic: "aeroops_fuel_price_topic",
-    protoSchema: "", // Add proto file content
-    messageType: "FuelPrice",
+    messageFormat: "json",
     samplePayload: JSON.stringify({ fuelType: "Jet-A", price: 5.50 }, null, 2),
     sampleKey: "fuel-price-key-123"
   },
@@ -172,8 +167,7 @@ const kafkaConsumers: Consumer[] = [
     type: "kafka",
     status: "active",
     topic: "aeroops_fuel_supplier_topic",
-    protoSchema: "", // Add proto file content
-    messageType: "FuelSupplier",
+    messageFormat: "json",
     samplePayload: JSON.stringify({ supplierId: "FS789", name: "FuelCo" }, null, 2),
     sampleKey: "supplier-key-789"
   },
@@ -185,7 +179,29 @@ const kafkaConsumers: Consumer[] = [
     topic: "aeroline_station_flight_changes",
     protoSchema: StationFlightSummary,
     messageType: "StationFlightSummary",
-    samplePayload: JSON.stringify({ operationId: "GO123", status: "completed" }, null, 2),
+    messageFormat: "protobuf",
+    samplePayload: JSON.stringify(
+      {
+  "flightSegmentReferenceId": "SEG12345",
+  "flightLegId": "LEG98765",
+  "flightNumber": "G9536",
+  "estDepartureDate": "12/08/2025 04:35",
+  "estArrivalDate": "12/08/2025 08:40",
+  "delay": [
+    {
+      "delayCode": "93",
+      "delayValue": 15
+    },
+    {
+      "delayCode": "81",
+      "delayValue": 10
+    }
+  ],
+  "opsReference": "OPS-456789",
+  "doorClosed": "04:30",
+  "holdsClosed": "04:32"
+}
+, null, 2),
     sampleKey: "ground-ops-key-123"
   },
   {
@@ -195,26 +211,27 @@ const kafkaConsumers: Consumer[] = [
     topic: "aeroline_ldm_data_topic",
     protoSchema: LdmMessage,
     messageType: "LdmMessage",
+    messageFormat: "protobuf",
     samplePayload: JSON.stringify({
-                flightIdentifier: "470699",
-                airlineDesignator: "9P",
-                flightNumber: "9P858",
-                flightOperationDateTimeZulu: "13/06/2025 00:00:00",
-                aircraftRegistration: "AP-BOQ",
-                destinationDetails: [
-                    {
-                        destinationAirport: "UET",
-                        paxCountDetails: {
-                            numberOfAdult: 142,
-                            numberOfMale: 112,
-                            numberOfFemale: 30,
-                            numberOfChildren: 10,
-                            numberOfInfants: 3
-                        },
-                        totalDeadLoad: "1222"
-                    }
-                ]
-            }, null, 2),
+      flightIdentifier: "470699",
+      airlineDesignator: "9P",
+      flightNumber: "9P858",
+      flightOperationDateTimeZulu: "13/06/2025 00:00:00",
+      aircraftRegistration: "AP-BOQ",
+      destinationDetails: [
+        {
+          destinationAirport: "UET",
+          paxCountDetails: {
+            numberOfAdult: 142,
+            numberOfMale: 112,
+            numberOfFemale: 30,
+            numberOfChildren: 10,
+            numberOfInfants: 3
+          },
+          totalDeadLoad: "1222"
+        }
+      ]
+    }, null, 2),
     sampleKey: "ldm-key-456"
   },
   {
@@ -223,82 +240,60 @@ const kafkaConsumers: Consumer[] = [
     status: "active",
     lastTested: "2024-01-15 13:55",
     topic: "aeroline_mvt_data_topic",
-    protoSchema:MvtMessage,
+    protoSchema: MvtMessage,
     messageType: "MvtMessage",
-    samplePayload: JSON.stringify(
-      {
-  flightIdentifier: "890133237",
-  airlineDesignator: "G9",
-  flightNumber: "G9536",
-  flightOperationDateTimeZulu: "12",
-  aircraftRegistration: "A6ANA",
-  movementAirportCode: "SHJ",
-  movmentData: {
-    departureMessageDetails: {
-      departureIdentifier: "AD",
-      offBlockDateTimeZulu: { time: "04:35", date: "12" },
-      airBorneDateTimeZule: { time: "04:38", date: "12" },
-      estimatedArrivalDateTimeZulu: { time: "08:40", date: "12" },
-      estimatedArrivalAirport: "KTM",
-      delay: {
-        0: {
-          delayIdentifier: "DEL-001",
-          delayCode: "81",
-          delayInMinutes: 5,
-          subDelayCode: "81A",
+    messageFormat: "protobuf",
+    samplePayload: JSON.stringify({
+      flightIdentifier: "890133237",
+      airlineDesignator: "G9",
+      flightNumber: "G9536",
+      flightOperationDateTimeZulu: "12",
+      aircraftRegistration: "A6ANA",
+      movementAirportCode: "SHJ",
+      movmentData: {
+        departureMessageDetails: {
+          departureIdentifier: "AD",
+          offBlockDateTimeZulu: { time: "04:35", date: "12" },
+          airBorneDateTimeZule: { time: "04:38", date: "12" },
+          estimatedArrivalDateTimeZulu: { time: "08:40", date: "12" },
+          estimatedArrivalAirport: "KTM",
+          delay: {
+            0: { delayIdentifier: "DEL-001", delayCode: "81", delayInMinutes: 5, subDelayCode: "81A" },
+            1: { delayIdentifier: "DEL-001", delayCode: "93", delayInMinutes: 5, subDelayCode: "93L" }
+          },
+          passengerInformation: { 0: { occupiedCount: 132 } },
+          reclearanceTimeInMinutes: 0,
+          reclearanceAirport: "",
+          estimatedOnblockTimeZulu: { time: "08:40", date: "12" },
+          scheduledFlightDepartureDateTimeZulu: "2025-06-12T04:25:00Z",
+          extraDelay: {},
+          crewReportTime: {
+            0: { crewType: "COCKPIT_CREW", reportingDateTimeZulu: { time: "04:00", date: "12" } }
+          },
+          movementAfterPushBackDateTimeZulu: { time: "04:35", date: "12" },
+          takeOffFuel: 11000,
+          takeOffWeight: 26000,
+          zeroFuelWeight: 15000,
+          operationCategory: { crewCategory: "STANDARD", aircraftCategory: "COMMERCIAL" }
         },
-        1: {
-          delayIdentifier: "DEL-001",
-          delayCode: "93",
-          delayInMinutes: 5,
-          subDelayCode: "93L",
+        arrivalMessageDetail: {
+          arrivalIdentifier: "AA",
+          touchDownDateTimeZulu: { time: "08:38", date: "12" },
+          onBlockDateTimeZule: { time: "08:40", date: "12" },
+          scheduledFlightDepartureDateTimeZulu: "2025-06-12T04:25:00Z"
         },
+        delayMessageDetail: {
+          estimatedDepartureDateTime: { time: "04:35", date: "12" },
+          revisedArrivalDateTime: { time: "08:40", date: "12" },
+          estimatedBlockDateTimeZule: { time: "08:40", date: "12" },
+          delay: { 0: { delayCode: "93", delayInMinutes: 10, subDelayCode: "93L" } },
+          scheduledFlightDepartureDateTimeZulu: "2025-06-12T04:25:00Z",
+          extraDelay: {}
+        }
       },
-      passengerInformation: {
-        0: { occupiedCount: 132 },
-      },
-      reclearanceTimeInMinutes: 0,
-      reclearanceAirport: "",
-      estimatedOnblockTimeZulu: { time: "08:40", date: "12" },
-      scheduledFlightDepartureDateTimeZulu: "2025-06-12T04:25:00Z",
-      extraDelay: {},
-      crewReportTime: {
-        0: {
-          crewType: "COCKPIT_CREW",
-          reportingDateTimeZulu: { time: "04:00", date: "12" },
-        },
-      },
-      movementAfterPushBackDateTimeZulu: { time: "04:35", date: "12" },
-      takeOffFuel: 11000,
-      takeOffWeight: 26000,
-      zeroFuelWeight: 15000,
-      operationCategory: {
-        crewCategory: "STANDARD",
-        aircraftCategory: "COMMERCIAL",
-      },
-    },
-    arrivalMessageDetail: {
-      arrivalIdentifier: "THIS SHOULD NOT BE AA FOR DEPATURE",
-      touchDownDateTimeZulu: { time: "08:38", date: "12" },
-      onBlockDateTimeZule: { time: "08:40", date: "12" },
-      scheduledFlightDepartureDateTimeZulu: "2025-06-12T04:25:00Z",
-    },
-    delayMessageDetail: {
-      estimatedDepartureDateTime: { time: "04:35", date: "12" },
-      revisedArrivalDateTime: { time: "08:40", date: "12" },
-      estimatedBlockDateTimeZule: { time: "08:40", date: "12" },
-      delay: {
-        0: { delayCode: "93", delayInMinutes: 10, subDelayCode: "93L" },
-      },
-      scheduledFlightDepartureDateTimeZulu: "2025-06-12T04:25:00Z",
-      extraDelay: {},
-    },
-  },
-  rawMessage:
-    "COR\nMVT\nG9536/12.A6ABC.SHJ\nAD120435/120438 EA0840 KTM\nDL81/0010\nPX132\nDLA81A///\nAA120838/120840\n",
-  remarks: "Runway congestion delay - 10 minutes",
-}
-, null, 2),
+      rawMessage: "COR\nMVT\nG9536/12.A6ABC.SHJ\nAD120435/120438 EA0840 KTM\nDL81/0010\nPX132\nDLA81A///\nAA120838/120840\n",
+      remarks: "Runway congestion delay - 10 minutes"
+    }, null, 2),
     sampleKey: "mvt-key-789"
   },
   {
@@ -308,6 +303,7 @@ const kafkaConsumers: Consumer[] = [
     topic: "aeroops_flight_update_internal_topic",
     protoSchema: OtherSystemsFlightUpdateInternalProto,
     messageType: "OtherSystemsFlightUpdateInternal",
+    messageFormat: "protobuf",
     samplePayload: JSON.stringify({
       flightReferences: ["okcEPEt", "IQe"],
       originFlightReference: "7oFfs8WGv",
@@ -348,6 +344,45 @@ interface ConsumerOverviewProps {
 }
 
 export const ConsumerOverview = ({ onTestConsumer, onConfigureConsumer }: ConsumerOverviewProps) => {
+  const [filter, setFilter] = useState<'all' | 'protobuf' | 'json'>('all');
+  const [sortField, setSortField] = useState<'name' | 'status' | 'lastTested'>('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  // Load filter and sort preferences from localStorage
+  useEffect(() => {
+    const savedFilter = localStorage.getItem('kafkaConsumerFilter');
+    const savedSortField = localStorage.getItem('kafkaConsumerSortField');
+    const savedSortOrder = localStorage.getItem('kafkaConsumerSortOrder');
+    if (savedFilter) setFilter(savedFilter as 'all' | 'protobuf' | 'json');
+    if (savedSortField) setSortField(savedSortField as 'name' | 'status' | 'lastTested');
+    if (savedSortOrder) setSortOrder(savedSortOrder as 'asc' | 'desc');
+  }, []);
+
+  // Save filter and sort preferences to localStorage
+  useEffect(() => {
+    localStorage.setItem('kafkaConsumerFilter', filter);
+    localStorage.setItem('kafkaConsumerSortField', sortField);
+    localStorage.setItem('kafkaConsumerSortOrder', sortOrder);
+  }, [filter, sortField, sortOrder]);
+
+  // Filter and sort Kafka consumers
+  const filteredAndSortedConsumers = kafkaConsumers
+    .filter(consumer => filter === 'all' || consumer.messageFormat === filter)
+    .sort((a, b) => {
+      const order = sortOrder === 'asc' ? 1 : -1;
+      if (sortField === 'name') {
+        return order * a.name.localeCompare(b.name);
+      } else if (sortField === 'status') {
+        const statusOrder = { active: 1, inactive: 2, error: 3 };
+        return order * (statusOrder[a.status] - statusOrder[b.status]);
+      } else if (sortField === 'lastTested') {
+        const dateA = a.lastTested ? new Date(a.lastTested).getTime() : 0;
+        const dateB = b.lastTested ? new Date(b.lastTested).getTime() : 0;
+        return order * (dateA - dateB);
+      }
+      return 0;
+    });
+
   const allConsumers = [...kafkaConsumers, ...jmsConsumers];
   const activeCount = allConsumers.filter(c => c.status === 'active').length;
   const errorCount = allConsumers.filter(c => c.status === 'error').length;
@@ -381,22 +416,66 @@ export const ConsumerOverview = ({ onTestConsumer, onConfigureConsumer }: Consum
         </Card>
       </div>
 
+      <div className="flex items-center gap-4 mb-4">
+        <div className="space-y-2">
+          <label htmlFor="filter">Filter by Message Format</label>
+          <Select value={filter} onValueChange={setFilter}>
+            <SelectTrigger id="filter" className="w-40">
+              <SelectValue placeholder="Select filter" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="protobuf">Protobuf</SelectItem>
+              <SelectItem value="json">JSON</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <label htmlFor="sortField">Sort by</label>
+          <Select value={sortField} onValueChange={setSortField}>
+            <SelectTrigger id="sortField" className="w-40">
+              <SelectValue placeholder="Select sort field" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name">Name</SelectItem>
+              <SelectItem value="status">Status</SelectItem>
+              <SelectItem value="lastTested">Last Tested</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <label htmlFor="sortOrder">Sort Order</label>
+          <Select value={sortOrder} onValueChange={setSortOrder}>
+            <SelectTrigger id="sortOrder" className="w-40">
+              <SelectValue placeholder="Select sort order" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="asc">Ascending</SelectItem>
+              <SelectItem value="desc">Descending</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <div className="h-2 w-2 rounded-full bg-warning" />
-              Kafka Consumers ({kafkaConsumers.length})
+              Kafka Consumers ({filteredAndSortedConsumers.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              {kafkaConsumers.map((consumer) => (
+              {filteredAndSortedConsumers.map((consumer) => (
                 <div key={consumer.name} className="flex items-center justify-between p-3 rounded-lg border bg-card">
                   <div className="flex items-center gap-3">
                     {getStatusIcon(consumer.status)}
                     <div>
                       <div className="font-medium text-sm">{consumer.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Format: {consumer.messageFormat?.toUpperCase() || 'N/A'}
+                      </div>
                       {consumer.lastTested && (
                         <div className="text-xs text-muted-foreground">Last tested: {consumer.lastTested}</div>
                       )}
