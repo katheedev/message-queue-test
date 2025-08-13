@@ -419,7 +419,7 @@ export const ConsumerOverview = ({ onTestConsumer, onConfigureConsumer }: Consum
       <div className="flex items-center gap-4 mb-4">
         <div className="space-y-2">
           <label htmlFor="filter">Filter by Message Format</label>
-          <Select value={filter} onValueChange={setFilter}>
+          <Select value={filter} onValueChange={(value) => setFilter(value as "all" | "protobuf" | "json")}>
             <SelectTrigger id="filter" className="w-40">
               <SelectValue placeholder="Select filter" />
             </SelectTrigger>
@@ -432,7 +432,7 @@ export const ConsumerOverview = ({ onTestConsumer, onConfigureConsumer }: Consum
         </div>
         <div className="space-y-2">
           <label htmlFor="sortField">Sort by</label>
-          <Select value={sortField} onValueChange={setSortField}>
+          <Select value={sortField} onValueChange={(value) => setSortField(value as "name" | "status" | "lastTested")}>
             <SelectTrigger id="sortField" className="w-40">
               <SelectValue placeholder="Select sort field" />
             </SelectTrigger>
@@ -445,7 +445,7 @@ export const ConsumerOverview = ({ onTestConsumer, onConfigureConsumer }: Consum
         </div>
         <div className="space-y-2">
           <label htmlFor="sortOrder">Sort Order</label>
-          <Select value={sortOrder} onValueChange={setSortOrder}>
+          <Select value={sortOrder} onValueChange={(value) => setSortOrder(value as "asc" | "desc")}>
             <SelectTrigger id="sortOrder" className="w-40">
               <SelectValue placeholder="Select sort order" />
             </SelectTrigger>

@@ -5,6 +5,8 @@ import { ConsumerOverview } from "@/components/ConsumerOverview";
 import { KafkaConfig } from "@/components/KafkaConfig";
 import { JmsConfig } from "@/components/JmsConfig";
 import { MessageTester } from "@/components/MessageTester";
+import { EnvironmentSelector } from "@/components/EnvironmentSelector";
+import { useEnvironment } from "@/contexts/EnvironmentContext";
 import { Plane, Settings, TestTube, Database, MessageSquare } from "lucide-react";
 
 interface Consumer {
@@ -17,6 +19,7 @@ interface Consumer {
 const Index = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedConsumer, setSelectedConsumer] = useState<Consumer | null>(null);
+  const { currentEnvironment } = useEnvironment();
 
   const handleTestConsumer = (consumer: Consumer) => {
     setSelectedConsumer(consumer);
@@ -49,15 +52,19 @@ const Index = () => {
                 </p>
               </div>
             </div>
-            <Badge variant="outline" className="bg-accent/50">
-              Production Ready
-            </Badge>
+            <div className="flex items-center gap-4">
+              <EnvironmentSelector compact />
+            </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
+        <div className="mb-6">
+          <EnvironmentSelector showActions />
+        </div>
+        
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-5 mb-6">
             <TabsTrigger value="overview" className="flex items-center gap-2">

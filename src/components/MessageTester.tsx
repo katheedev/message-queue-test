@@ -329,7 +329,7 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
         const payload = JSON.parse(messagePayload);
         const message = MessageType.create(payload);
         const buffer = MessageType.encode(message).finish();
-        serializedBuffer = buffer.toString('hex');
+        serializedBuffer = Array.from(buffer).map(b => b.toString(16).padStart(2, '0')).join('');
       } catch (error) {
         console.error('Pre-serialization error:', error);
       }
