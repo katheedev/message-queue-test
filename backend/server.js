@@ -239,6 +239,258 @@ app.post('/api/kafka/send-message', async (req, res) => {
   }
 });
 
+
+const mq = require('ibmmq');
+const MQC = mq.MQC; // MQ Constants
+
+// Send IBM MQ message
+app.post('/api/ibmmq/send-message', async (req, res) => {
+  const { config, queue, messagePayload, messageFormat } = req.body;
+
+  if (!config || !config.qmgr || !config.queue || !queue) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid configuration: qmgr, queue, and queue name are required'
+    });
+  }
+
+  try {
+    const connDetails = {
+      qMgr: config.qmgr,
+      host: config.host || 'localhost',
+      port: config.port || 1414,
+      channel: config.channel || 'DEV.APP.SVRCONN',
+      user: config.user || '',
+      password: config.password || ''
+    };
+
+    const cno = new mq.MQCNO();
+    cno.Options = MQC.MQCNO_NONE;
+
+    if (connDetails.user && connDetails.password) {
+      const csp = new mq.MQCSP();
+      csp.UserId = connDetails.user;
+      csp.Password = connDetails.password;
+      cno.SecurityParms = csp;
+    }
+
+    const cd = new mq.MQCD();
+    cd.ConnectionName = `${connDetails.host}(${connDetails.port})`;
+    cd.ChannelName = connDetails.channel;
+
+    cno.ClientConn = cd;
+
+    const hConn = await mq.ConnxPromise(connDetails.qMgr, cno);
+    const od = new mq.MQOD();
+    od.ObjectName = queue;
+    od.ObjectType = MQC.MQOT_Q;
+
+    const openOptions = MQC.MQOO_OUTPUT;
+    const hObj = await mq.OpenPromise(hConn, od, openOptions);
+
+    let value;
+    if (messageFormat === 'json') {
+      try {
+        value = JSON.stringify(JSON.parse(messagePayload));
+      } catch (error) {
+        throw new Error('Invalid JSON payload');
+      }
+    } else if (messageFormat === 'string') {
+      value = messagePayload;
+    } else {
+      throw new Error('Invalid messageFormat. Must be "json" or "string"');
+    }
+
+    const mqmd = new mq.MQMD();
+    const pmo = new mq.MQPMO();
+    pmo.Options = MQC.MQPMO_NO_SYNCPOINT;
+
+    await mq.PutPromise(hObj, mqmd, pmo, value);
+
+    await mq.ClosePromise(hObj, 0);
+    await mq.DiscPromise(hConn);
+
+    res.json({
+      status: 'success',
+      message: 'Message sent successfully'
+    });
+  } catch (error) {
+    console.error('Error sending IBM MQ message:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to send message'
+    });
+  }
+});
+
+// Receive IBM MQ message
+app.post('/api/ibmmq/receive-message', async (req, res) => {
+  const { config, queue } = req.body;
+
+  if (!config || !config.qmgr || !queue) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid configuration: qmgr and queue are required'
+    });
+  }
+
+  try {
+    const connDetails = {
+      qMgr: config.qmgr,
+      host: config.host || 'localhost',
+      port: config.port || 1414,
+      channel: config.channel || 'DEV.APP.SVRCONN',
+      user: config.user || '',
+      password: config.password || ''
+    };
+
+    const cno = new mq.MQCNO();
+    cno.Options = MQC.MQCNO_NONE;
+
+    if (connDetails.user && connDetails.password) {
+      const csp = new mq.MQCSP();
+      csp.UserId = connDetails.user;
+      csp.Password = connDetails.password;
+      cno.SecurityParms = csp;
+    }
+
+    const cd = new mq.MQCD();
+    cd.ConnectionName = `${connDetails.host}(${connDetails.port})`;
+    cd.ChannelName = connDetails.channel;
+
+    cno.ClientConn = cd;
+
+    const hConn = await mq.ConnxPromise(connDetails.qMgr, cno);
+    const od = new mq.MQOD();
+    od.ObjectName = queue;
+    od.ObjectType = MQC.MQOT_Q;
+
+    const openOptions = MQC.MQOO_INPUT_AS_Q_DEF;
+    const hObj = await mq.OpenPromise(hConn, od, openOptions);
+
+    const mqmd = new mq.MQMD();
+    const gmo = new mq.MQGMO();
+    gmo.Options = MQC.MQGMO_NO_WAIT | MQC.MQGMO_CONVERT;
+
+    try {
+      const message = await mq.GetPromise(hObj, mqmd, gmo);
+      await mq.ClosePromise(hObj, 0);
+      await mq.DiscPromise(hConn);
+
+      let messageContent;
+      try {
+        messageContent = JSON.parse(message.toString());
+      } catch (e) {
+        messageContent = message.toString();
+      }
+
+      res.json({
+        status: 'success',
+        message: messageContent
+      });
+    } catch (error) {
+      if (error.mqcc === MQC.MQCC_FAILED && error.mqrc === MQC.MQRC_NO_MSG_AVAILABLE) {
+        await mq.ClosePromise(hObj, 0);
+        await mq.DiscPromise(hConn);
+        res.json({
+          status: 'success',
+          message: 'No messages available in the queue'
+        });
+      } else {
+        throw error;
+      }
+    }
+  } catch (error) {
+    console.error('Error receiving IBM MQ message:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to receive message'
+    });
+  }
+});
+
+// List IBM MQ channels
+app.post('/api/ibmmq/channels', async (req, res) => {
+  const { config } = req.body;
+
+  if (!config || !config.qmgr) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid configuration: qmgr is required'
+    });
+  }
+
+  try {
+    const connDetails = {
+      qMgr: config.qmgr,
+      host: config.host || 'localhost',
+      port: config.port || 1414,
+      channel: config.channel || 'DEV.APP.SVRCONN',
+      user: config.user || '',
+      password: config.password || ''
+    };
+
+    const cno = new mq.MQCNO();
+    cno.Options = MQC.MQCNO_NONE;
+
+    if (connDetails.user && connDetails.password) {
+      const csp = new mq.MQCSP();
+      csp.UserId = connDetails.user;
+      csp.Password = connDetails.password;
+      cno.SecurityParms = csp;
+    }
+
+    const cd = new mq.MQCD();
+    cd.ConnectionName = `${connDetails.host}(${connDetails.port})`;
+    cd.ChannelName = connDetails.channel;
+
+    cno.ClientConn = cd;
+
+    const hConn = await mq.ConnxPromise(connDetails.qMgr, cno);
+
+    const pc = new mq.MQPCF();
+    pc.Type = MQC.MQCMD_INQUIRE_CHANNEL;
+    pc.Parameters = [
+      MQC.MQCACH_CHANNEL_NAME,
+      MQC.MQCACH_CHANNEL_TYPE,
+      MQC.MQCACH_CHANNEL_STATUS
+    ];
+    pc.StrucId = MQC.MQCFST_STRUC_ID;
+    pc.Parameter = MQC.MQCA_CHANNEL_NAME;
+    pc.Value = '*'; // Wildcard to get all channels
+
+    const channels = [];
+    const response = await mq.PCFExecutePromise(hConn, pc);
+
+    response.forEach(resp => {
+      const channelInfo = {};
+      resp.Parameters.forEach(param => {
+        if (param.Parameter === MQC.MQCACH_CHANNEL_NAME) {
+          channelInfo.name = param.Value.trim();
+        } else if (param.Parameter === MQC.MQCACH_CHANNEL_TYPE) {
+          channelInfo.type = param.Value;
+        } else if (param.Parameter === MQC.MQCACH_CHANNEL_STATUS) {
+          channelInfo.status = param.Value;
+        }
+      });
+      channels.push(channelInfo);
+    });
+
+    await mq.DiscPromise(hConn);
+
+    res.json({
+      status: 'success',
+      channels
+    });
+  } catch (error) {
+    console.error('Error listing IBM MQ channels:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to list channels'
+    });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
