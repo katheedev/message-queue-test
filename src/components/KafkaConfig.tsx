@@ -4,10 +4,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Save, TestTube, RefreshCw } from "lucide-react";
+import { Save, TestTube, RefreshCw, ShieldAlert, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useEnvironment } from "@/contexts/EnvironmentContext";
 
 interface KafkaConfigData {
   bootstrapServers: string;
@@ -48,6 +50,8 @@ export const KafkaConfig = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connected' | 'error'>('disconnected');
   const { toast } = useToast();
+  const { currentEnvironment } = useEnvironment();
+  const isProd = currentEnvironment === 'prod';
 
   const handleInputChange = (field: keyof KafkaConfigData, value: string | number | boolean) => {
     setConfig(prev => ({ ...prev, [field]: value }));
@@ -218,8 +222,28 @@ const handleTestConnection = async () => {
           <Separator />
 
           <div>
-            <h3 className="text-lg font-semibold mb-4">Security Settings</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                Security Settings
+                {isProd ? (
+                  <Badge variant="destructive" className="animate-pulse">PROD AUTH REQUIRED</Badge>
+                ) : (
+                  <Badge variant="outline">STAGING (NO AUTH)</Badge>
+                )}
+              </h3>
+            </div>
+            
+            {isProd && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-3">
+                <ShieldAlert className="h-5 w-5 text-red-500 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-semibold text-red-500">Production environment requires SASL/SSL.</p>
+                  <p className="text-muted-foreground">Credentials will be securely handled by the backend server.</p>
+                </div>
+              </div>
+            )}
+
+            <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${!isProd ? 'opacity-50 grayscale' : ''}`}>
               <div className="space-y-2">
                 <Label htmlFor="saslMechanism">SASL Mechanism</Label>
                 <Input

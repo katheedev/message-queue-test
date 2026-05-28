@@ -12,6 +12,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Upload, Send, FileText, CheckCircle, XCircle, Clock, Play } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import protobuf from 'protobufjs';
+import { HistoryService } from "@/services/historyService";
+import { useUser } from "@/contexts/UserContext";
+import { useEnvironment } from "@/contexts/EnvironmentContext";
 
 interface TestResult {
   id: string;
@@ -71,6 +74,8 @@ export const MessageTester = ({ selectedConsumer, appId }: MessageTesterProps) =
     message: ""
   });
   const { toast } = useToast();
+  const { currentUser } = useUser();
+  const { currentEnvironment } = useEnvironment();
 
   // Load consumer config when selectedConsumer changes
   useEffect(() => {
@@ -406,6 +411,22 @@ export const MessageTester = ({ selectedConsumer, appId }: MessageTesterProps) =
         description: result.message,
         variant: result.status === 'success' ? "default" : "destructive"
       });
+
+      // Log to Firebase History
+      if (appId && currentUser) {
+        await HistoryService.logMessage({
+          appId,
+          userId: currentUser.id,
+          userName: currentUser.name,
+          consumerName: selectedConsumer?.name || "Unknown",
+          environment: currentEnvironment,
+          type: selectedConsumer?.type || 'kafka',
+          payload: messagePayload,
+          result: result.message,
+          status: result.status === 'success' ? 'success' : 'error',
+          messageFormat: selectedConsumer?.messageFormat || 'json'
+        });
+      }
 
       saveConsumerConfig();
     } catch (error: any) {

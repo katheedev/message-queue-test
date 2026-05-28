@@ -5,7 +5,7 @@ import { MessageLog } from '@/types/environment';
 export class HistoryService {
   private static readonly COLLECTION = 'testLogs';
 
-  static async logMessage(log: Omit<MessageLog, 'id'>): Promise<string> {
+  static async logMessage(log: Omit<MessageLog, 'id' | 'timestamp'>): Promise<string> {
     const docRef = await addDoc(collection(db, this.COLLECTION), {
       ...log,
       timestamp: new Date().toISOString()
