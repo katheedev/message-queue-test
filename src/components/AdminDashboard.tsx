@@ -102,44 +102,86 @@ export const AdminDashboard = () => {
         </Card>
 
         {/* User Assignment */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <LinkIcon className="h-5 w-5" />
-              Assign QA to App
-            </CardTitle>
-            <CardDescription>Grant testers access to specific domains</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Select Application</Label>
-              <Select value={selectedAppId} onValueChange={setSelectedAppId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select App" />
-                </SelectTrigger>
-                <SelectContent>
-                  {apps.filter(app => app.id).map(app => (
-                    <SelectItem key={app.id} value={app.id}>{app.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Select QA Tester</Label>
-              <Select value={selectedQAId} onValueChange={setSelectedQAId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select QA" />
-                </SelectTrigger>
-                <SelectContent>
-                  {qas.filter(qa => qa.id).map(qa => (
-                    <SelectItem key={qa.id} value={qa.id}>{qa.name} ({qa.email})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button onClick={handleAssignQA} className="w-full" variant="secondary">Assign Access</Button>
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Register New QA
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="qaName">Full Name</Label>
+                <Input id="qaName" placeholder="John Doe" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="qaEmail">Email Address</Label>
+                <Input id="qaEmail" type="email" placeholder="john@example.com" />
+              </div>
+              <Button 
+                variant="outline"
+                className="w-full"
+                onClick={async () => {
+                  const name = (document.getElementById('qaName') as HTMLInputElement).value;
+                  const email = (document.getElementById('qaEmail') as HTMLInputElement).value;
+                  if (!name || !email) return;
+                  try {
+                    const id = email.replace(/[^a-zA-Z0-9]/g, '_');
+                    await UserService.createUser({ id, name, email, role: 'qa' });
+                    toast({ title: "QA Registered", description: "Successfully added new QA tester" });
+                    fetchData();
+                    (document.getElementById('qaName') as HTMLInputElement).value = '';
+                    (document.getElementById('qaEmail') as HTMLInputElement).value = '';
+                  } catch (e) {
+                    toast({ title: "Error", description: "Failed to register QA", variant: "destructive" });
+                  }
+                }}
+              >
+                Register QA
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LinkIcon className="h-5 w-5" />
+                Assign QA to App
+              </CardTitle>
+              <CardDescription>Grant testers access to specific domains</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Select Application</Label>
+                <Select value={selectedAppId} onValueChange={setSelectedAppId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select App" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {apps.filter(app => app.id).map(app => (
+                      <SelectItem key={app.id} value={app.id}>{app.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Select QA Tester</Label>
+                <Select value={selectedQAId} onValueChange={setSelectedQAId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select QA" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {qas.filter(qa => qa.id).map(qa => (
+                      <SelectItem key={qa.id} value={qa.id}>{qa.name} ({qa.email})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={handleAssignQA} className="w-full" variant="secondary">Assign Access</Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

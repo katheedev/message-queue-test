@@ -3,9 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Play, Settings, Activity, Database } from "lucide-react";
+import { Play, Settings, Activity, Database, Plus, Check } from "lucide-react";
 import { AppService } from "@/services/appService";
 import { Consumer } from "@/types/environment";
+import { useUser } from "@/contexts/UserContext";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 
 
 
@@ -40,6 +46,16 @@ export const ConsumerOverview = ({ onTestConsumer, onConfigureConsumer, appId }:
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [consumers, setConsumers] = useState<Consumer[]>([]);
   const [loading, setLoading] = useState(false);
+  
+  const { isAdmin } = useUser();
+  const { toast } = useToast();
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newConsumer, setNewConsumer] = useState<Partial<Consumer>>({
+    type: 'kafka',
+    status: 'active',
+    messageFormat: 'json',
+  });
 
   // Load filter and sort preferences from localStorage
   useEffect(() => {
@@ -72,7 +88,7 @@ export const ConsumerOverview = ({ onTestConsumer, onConfigureConsumer, appId }:
     };
 
     fetchConsumers();
-  }, [appId]);
+  }, [appId, isAdding]); // Re-fetch after adding is complete
 
   // Save filter and sort preferences to localStorage
   useEffect(() => {
@@ -145,10 +161,11 @@ export const ConsumerOverview = ({ onTestConsumer, onConfigureConsumer, appId }:
         </Card>
       </div>
 
-      <div className="flex items-center gap-4 mb-4">
-        <div className="space-y-2">
-          <label htmlFor="filter" className="text-sm font-medium">Message Format</label>
-          <Select value={filter} onValueChange={(value) => setFilter(value as "all" | "protobuf" | "json")}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-4">
+          <div className="space-y-2">
+            <label htmlFor="filter" className="text-sm font-medium">Message Format</label>
+            <Select value={filter} onValueChange={(value) => setFilter(value as "all" | "protobuf" | "json")}>
             <SelectTrigger id="filter" className="w-40">
               <SelectValue placeholder="Select filter" />
             </SelectTrigger>
@@ -184,6 +201,140 @@ export const ConsumerOverview = ({ onTestConsumer, onConfigureConsumer, appId }:
             </SelectContent>
           </Select>
         </div>
+        </div>
+        {isAdmin && appId && (
+          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+            <DialogTrigger asChild>
+              <Button className="mt-6 flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                Add Consumer
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add New Consumer</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Consumer Name</Label>
+                    <Input 
+                      placeholder="e.g. FlightUpdateConsumer" 
+                      value={newConsumer.name || ''} 
+                      onChange={e => setNewConsumer({...newConsumer, name: e.target.value})} 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Type</Label>
+                    <Select value={newConsumer.type} onValueChange={(val: any) => setNewConsumer({...newConsumer, type: val})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="kafka">Kafka</SelectItem>
+                        <SelectItem value="jms">JMS</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <Input 
+                    placeholder="What feature does this consumer handle?" 
+                    value={newConsumer.description || ''} 
+                    onChange={e => setNewConsumer({...newConsumer, description: e.target.value})} 
+                  />
+                </div>
+
+                {newConsumer.type === 'kafka' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Topic Name</Label>
+                      <Input 
+                        placeholder="e.g. aeroops_flight_updates" 
+                        value={newConsumer.topic || ''} 
+                        onChange={e => setNewConsumer({...newConsumer, topic: e.target.value})} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Message Format</Label>
+                      <Select value={newConsumer.messageFormat} onValueChange={(val: any) => setNewConsumer({...newConsumer, messageFormat: val})}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="json">JSON</SelectItem>
+                          <SelectItem value="protobuf">Protobuf</SelectItem>
+                          <SelectItem value="string">String</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+                
+                {newConsumer.type === 'kafka' && newConsumer.messageFormat === 'protobuf' && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Message Type (Protobuf Root Name)</Label>
+                      <Input 
+                        placeholder="e.g. AcarsMessage" 
+                        value={newConsumer.messageType || ''} 
+                        onChange={e => setNewConsumer({...newConsumer, messageType: e.target.value})} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Proto Schema Definition</Label>
+                      <Textarea 
+                        placeholder={'syntax = "proto3";\nmessage ...'} 
+                        rows={6}
+                        className="font-mono text-xs"
+                        value={newConsumer.protoSchema || ''} 
+                        onChange={e => setNewConsumer({...newConsumer, protoSchema: e.target.value})} 
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="space-y-2">
+                  <Label>Sample Payload (JSON)</Label>
+                  <Textarea 
+                    placeholder={'{"key": "value"}'} 
+                    rows={6}
+                    className="font-mono text-xs"
+                    value={newConsumer.samplePayload || ''} 
+                    onChange={e => setNewConsumer({...newConsumer, samplePayload: e.target.value})} 
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
+                <Button 
+                  onClick={async () => {
+                    if (!newConsumer.name || !newConsumer.type) {
+                      toast({ title: "Error", description: "Name and type are required", variant: "destructive" });
+                      return;
+                    }
+                    setIsAdding(true);
+                    try {
+                      await AppService.saveConsumer(appId, newConsumer as Consumer);
+                      toast({ title: "Success", description: "Consumer added successfully" });
+                      setIsAddOpen(false);
+                      setNewConsumer({ type: 'kafka', status: 'active', messageFormat: 'json' });
+                    } catch (e: any) {
+                      toast({ title: "Error", description: e.message, variant: "destructive" });
+                    } finally {
+                      setIsAdding(false);
+                    }
+                  }}
+                  disabled={isAdding}
+                >
+                  {isAdding ? "Saving..." : "Save Consumer"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

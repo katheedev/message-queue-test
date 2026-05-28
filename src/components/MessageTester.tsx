@@ -13,8 +13,10 @@ import { Upload, Send, FileText, CheckCircle, XCircle, Clock, Play } from "lucid
 import { useToast } from "@/hooks/use-toast";
 import protobuf from 'protobufjs';
 import { HistoryService } from "@/services/historyService";
+import { AppService } from "@/services/appService";
 import { useUser } from "@/contexts/UserContext";
 import { useEnvironment } from "@/contexts/EnvironmentContext";
+import { Consumer } from "@/types/environment";
 
 interface TestResult {
   id: string;
@@ -43,6 +45,7 @@ interface MessageTesterProps {
   selectedConsumer?: {
     name: string;
     type: 'kafka' | 'jms';
+    status?: 'active' | 'inactive' | 'error';
     description?: string;
     topic?: string;
     protoSchema?: string;
@@ -113,9 +116,9 @@ export const MessageTester = ({ selectedConsumer, appId }: MessageTesterProps) =
     }
   }, [selectedConsumer]);
 
-  // Save consumer config to localStorage
-  const saveConsumerConfig = () => {
-    if (selectedConsumer?.name) {
+  // Save consumer config to Firebase and localStorage
+  const saveConsumerConfig = async () => {
+    if (selectedConsumer?.name && appId) {
       const config: ConsumerConfig & { headers?: string; queue?: string } = {
         topic,
         protoSchema: selectedConsumer?.messageFormat === 'protobuf' ? protoContent : undefined,
@@ -126,7 +129,25 @@ export const MessageTester = ({ selectedConsumer, appId }: MessageTesterProps) =
         queue: selectedConsumer?.type === 'jms' ? queue : undefined,
         messageFormat: selectedConsumer?.messageFormat
       };
+      
+      // Local storage backup
       localStorage.setItem(`consumerConfig_${selectedConsumer.name}`, JSON.stringify(config));
+
+      // Save to Firebase
+      try {
+        const updatedConsumer: Consumer = {
+          ...selectedConsumer,
+          status: selectedConsumer.status || 'active',
+          topic: config.topic || selectedConsumer.topic,
+          protoSchema: config.protoSchema || selectedConsumer.protoSchema,
+          messageType: config.messageType || selectedConsumer.messageType,
+          samplePayload: config.samplePayload || selectedConsumer.samplePayload,
+          sampleKey: config.sampleKey || selectedConsumer.sampleKey,
+        };
+        await AppService.saveConsumer(appId, updatedConsumer);
+      } catch (err) {
+        console.error("Failed to sync config with Firebase", err);
+      }
     }
   };
 

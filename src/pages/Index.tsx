@@ -12,6 +12,7 @@ import { useEnvironment } from "@/contexts/EnvironmentContext";
 import { useUser } from "@/contexts/UserContext";
 import { Plane, Settings, TestTube, Database, MessageSquare, ShieldAlert, Users, UserCog } from "lucide-react";
 import { App, User } from "@/types/environment";
+import { UserService } from "@/services/userService";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -21,8 +22,23 @@ const Index = () => {
   const [currentApp, setCurrentApp] = useState<App | null>(null);
   const { currentEnvironment } = useEnvironment();
   const { currentUser, setCurrentUser, isAdmin } = useUser();
+  const [users, setUsers] = useState<User[]>([]);
 
   const isProd = currentEnvironment === 'prod';
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      const allUsers = await UserService.getUsers();
+      setUsers(allUsers);
+      
+      // Auto-select admin if no user is selected
+      if (!currentUser && allUsers.length > 0) {
+        const adminUser = allUsers.find(u => u.role === 'admin') || allUsers[0];
+        setCurrentUser(adminUser);
+      }
+    };
+    fetchUsers();
+  }, []);
 
   const handleTestConsumer = (consumer: any) => {
     setSelectedConsumer(consumer);
@@ -39,10 +55,9 @@ const Index = () => {
   };
 
   const handleUserSwitch = (userId: string) => {
-    if (userId === "admin") {
-      setCurrentUser({ id: "admin", name: "Admin User", email: "admin@aero.com", role: "admin" });
-    } else {
-      setCurrentUser({ id: "qa1", name: "QA Tester 1", email: "qa1@aero.com", role: "qa" });
+    const user = users.find(u => u.id === userId);
+    if (user) {
+      setCurrentUser(user);
     }
   };
 
@@ -88,12 +103,13 @@ const Index = () => {
                   <Users className={`h-4 w-4 ${isProd ? "text-red-100" : "text-muted-foreground"}`} />
                 )}
                 <Select value={currentUser?.id || ""} onValueChange={handleUserSwitch}>
-                  <SelectTrigger className={`w-[120px] h-8 text-xs ${isProd ? "bg-red-700 border-red-500 text-white" : ""}`}>
+                  <SelectTrigger className={`w-[150px] h-8 text-xs ${isProd ? "bg-red-700 border-red-500 text-white" : ""}`}>
                     <SelectValue placeholder="Role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="qa1">QA Tester</SelectItem>
+                    {users.map(user => (
+                      <SelectItem key={user.id} value={user.id}>{user.name} ({user.role})</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
