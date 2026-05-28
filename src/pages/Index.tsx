@@ -5,6 +5,7 @@ import { ConsumerOverview } from "@/components/ConsumerOverview";
 import { KafkaConfig } from "@/components/KafkaConfig";
 import { JmsConfig } from "@/components/JmsConfig";
 import { MessageTester } from "@/components/MessageTester";
+import { AdminDashboard } from "@/components/AdminDashboard";
 import { EnvironmentSelector } from "@/components/EnvironmentSelector";
 import { AppSelector } from "@/components/AppSelector";
 import { useEnvironment } from "@/contexts/EnvironmentContext";
@@ -176,13 +177,7 @@ const Index = () => {
 
           {isAdmin && (
             <TabsContent value="admin">
-              <div className="text-center py-12 border rounded-lg bg-card border-dashed">
-                <ShieldAlert className="h-8 w-8 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-semibold mb-2">Admin Dashboard Coming Soon</h3>
-                <p className="text-muted-foreground">
-                  Application creation and QA assignment features are being migrated to Firebase.
-                </p>
-              </div>
+              <AdminDashboard />
             </TabsContent>
           )}
 

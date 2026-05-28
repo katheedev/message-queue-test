@@ -50,7 +50,7 @@ export const AppSelector = ({ onAppChange }: { onAppChange: (app: App | null) =>
           <SelectValue placeholder="Select Application" />
         </SelectTrigger>
         <SelectContent>
-          {apps.map((app) => (
+          {apps.filter(app => app.id).map((app) => (
             <SelectItem key={app.id} value={app.id}>
               {app.name}
             </SelectItem>

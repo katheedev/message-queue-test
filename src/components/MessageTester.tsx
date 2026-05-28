@@ -46,6 +46,7 @@ interface MessageTesterProps {
     messageType?: string;
     samplePayload?: string;
     sampleKey?: string;
+    headers?: string;
     messageFormat?: 'protobuf' | 'json' | 'string';
   } | null;
   appId?: string;

@@ -9,10 +9,12 @@ This is **Aero Ops Testing Suite**, a React-based web application for testing Sp
 ## Tech Stack
 
 - **Frontend**: React 18 with TypeScript
+- **Backend**: Node.js / Express (for Kafka/JMS logic)
+- **Database**: Firebase Firestore (for App/User management)
 - **Build Tool**: Vite 5
 - **UI Framework**: shadcn/ui components with Radix UI primitives
 - **Styling**: Tailwind CSS
-- **State Management**: React hooks + TanStack Query
+- **State Management**: React hooks + TanStack Query + UserContext
 - **Routing**: React Router DOM
 - **Form Handling**: React Hook Form with Zod validation
 - **Development**: ESLint, TypeScript strict mode disabled
@@ -20,23 +22,17 @@ This is **Aero Ops Testing Suite**, a React-based web application for testing Sp
 ## Development Commands
 
 ```bash
-# Install dependencies
+# Frontend
 npm install
+npm run dev      # Runs on port 8080
 
-# Start development server (runs on port 8080)
-npm run dev
+# Backend
+cd backend
+npm install
+npm start        # Runs on port 5000 (usually)
 
 # Build for production
 npm run build
-
-# Build for development environment  
-npm run build:dev
-
-# Run linting
-npm run lint
-
-# Preview production build
-npm run preview
 ```
 
 ## Project Architecture
@@ -52,9 +48,13 @@ npm run preview
 The application follows a tab-based interface with these main sections:
 
 1. **Consumer Overview** (`src/components/ConsumerOverview.tsx`)
-   - Displays hardcoded lists of Kafka and JMS consumers
-   - Shows consumer status (active/inactive/error) and last tested timestamps
+   - Displays dynamic lists of Kafka and JMS consumers fetched from Firebase
+   - Shows consumer status (active/inactive/error) and producer descriptions
    - Provides test and configuration actions for each consumer
+
+2. **Admin Dashboard** (`src/components/AdminDashboard.tsx`)
+   - Allows creation of new "Applications" (test domains)
+   - Manages QA tester roles and application assignments
 
 2. **Configuration Components**
    - `src/components/KafkaConfig.tsx`: Kafka connection and consumer configuration
