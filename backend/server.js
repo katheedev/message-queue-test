@@ -100,7 +100,7 @@ app.post('/api/kafka/topics', async (req, res) => {
   }
 });
 
-// Fetch all consumer groups
+// Fetch all consume] Flightkeys - Send the average PAX weight to flightkeys. r groups
 app.post('/api/kafka/consumer-groups', async (req, res) => {
   const config = req.body;
   if (!config || !config.bootstrapServers) {

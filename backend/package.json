@@ -13,6 +13,7 @@
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "ibmmq": "^2.1.5",
-    "kafkajs": "^2.2.4"
+    "kafkajs": "^2.2.4",
+    "protobufjs": "^7.5.4"
   }
 }

@@ -13,6 +13,8 @@ import LdmMessage from '../proto/LdmMessage.proto?raw';
 import MvtMessage from '../proto/MvtMessage.proto?raw';
 import StationFlightSummary from '../proto/StationFlightSummary.proto?raw';
 
+import MvtMessageSample from '../proto/MvtMessage-sample.json'
+
 interface Consumer {
   name: string;
   type: 'kafka' | 'jms';
@@ -243,59 +245,11 @@ const kafkaConsumers: Consumer[] = [
     protoSchema: MvtMessage,
     messageType: "MvtMessage",
     messageFormat: "protobuf",
-    samplePayload: JSON.stringify({
-      flightIdentifier: "890133237",
-      airlineDesignator: "G9",
-      flightNumber: "G9536",
-      flightOperationDateTimeZulu: "12",
-      aircraftRegistration: "A6ANA",
-      movementAirportCode: "SHJ",
-      movmentData: {
-        departureMessageDetails: {
-          departureIdentifier: "AD",
-          offBlockDateTimeZulu: { time: "04:35", date: "12" },
-          airBorneDateTimeZule: { time: "04:38", date: "12" },
-          estimatedArrivalDateTimeZulu: { time: "08:40", date: "12" },
-          estimatedArrivalAirport: "KTM",
-          delay: {
-            0: { delayIdentifier: "DEL-001", delayCode: "81", delayInMinutes: 5, subDelayCode: "81A" },
-            1: { delayIdentifier: "DEL-001", delayCode: "93", delayInMinutes: 5, subDelayCode: "93L" }
-          },
-          passengerInformation: { 0: { occupiedCount: 132 } },
-          reclearanceTimeInMinutes: 0,
-          reclearanceAirport: "",
-          estimatedOnblockTimeZulu: { time: "08:40", date: "12" },
-          scheduledFlightDepartureDateTimeZulu: "2025-06-12T04:25:00Z",
-          extraDelay: {},
-          crewReportTime: {
-            0: { crewType: "COCKPIT_CREW", reportingDateTimeZulu: { time: "04:00", date: "12" } }
-          },
-          movementAfterPushBackDateTimeZulu: { time: "04:35", date: "12" },
-          takeOffFuel: 11000,
-          takeOffWeight: 26000,
-          zeroFuelWeight: 15000,
-          operationCategory: { crewCategory: "STANDARD", aircraftCategory: "COMMERCIAL" }
-        },
-        arrivalMessageDetail: {
-          arrivalIdentifier: "AA",
-          touchDownDateTimeZulu: { time: "08:38", date: "12" },
-          onBlockDateTimeZule: { time: "08:40", date: "12" },
-          scheduledFlightDepartureDateTimeZulu: "2025-06-12T04:25:00Z"
-        },
-        delayMessageDetail: {
-          estimatedDepartureDateTime: { time: "04:35", date: "12" },
-          revisedArrivalDateTime: { time: "08:40", date: "12" },
-          estimatedBlockDateTimeZule: { time: "08:40", date: "12" },
-          delay: { 0: { delayCode: "93", delayInMinutes: 10, subDelayCode: "93L" } },
-          scheduledFlightDepartureDateTimeZulu: "2025-06-12T04:25:00Z",
-          extraDelay: {}
-        }
-      },
-      rawMessage: "COR\nMVT\nG9536/12.A6ABC.SHJ\nAD120435/120438 EA0840 KTM\nDL81/0010\nPX132\nDLA81A///\nAA120838/120840\n",
-      remarks: "Runway congestion delay - 10 minutes"
-    }, null, 2),
+    samplePayload:JSON.stringify(MvtMessageSample,null,2),
+
     sampleKey: "mvt-key-789"
   },
+  
   {
     name: "OtherSystemsFlightUpdateInternalConsumer",
     type: "kafka",
@@ -341,9 +295,10 @@ const getStatusIcon = (status: Consumer['status']) => {
 interface ConsumerOverviewProps {
   onTestConsumer: (consumer: Consumer) => void;
   onConfigureConsumer: (consumer: Consumer) => void;
+  appId?: string;
 }
 
-export const ConsumerOverview = ({ onTestConsumer, onConfigureConsumer }: ConsumerOverviewProps) => {
+export const ConsumerOverview = ({ onTestConsumer, onConfigureConsumer, appId }: ConsumerOverviewProps) => {
   const [filter, setFilter] = useState<'all' | 'protobuf' | 'json'>('all');
   const [sortField, setSortField] = useState<'name' | 'status' | 'lastTested'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');

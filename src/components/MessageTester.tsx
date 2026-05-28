@@ -40,6 +40,7 @@ interface MessageTesterProps {
   selectedConsumer?: {
     name: string;
     type: 'kafka' | 'jms';
+    description?: string;
     topic?: string;
     protoSchema?: string;
     messageType?: string;
@@ -47,9 +48,10 @@ interface MessageTesterProps {
     sampleKey?: string;
     messageFormat?: 'protobuf' | 'json' | 'string';
   } | null;
+  appId?: string;
 }
 
-export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
+export const MessageTester = ({ selectedConsumer, appId }: MessageTesterProps) => {
   const [protoFile, setProtoFile] = useState<File | null>(null);
   const [protoContent, setProtoContent] = useState("");
   const [protoInputMode, setProtoInputMode] = useState<'upload' | 'text'>('text');
@@ -73,10 +75,12 @@ export const MessageTester = ({ selectedConsumer }: MessageTesterProps) => {
   useEffect(() => {
     if (selectedConsumer?.name && selectedConsumer.type === 'kafka') {
       // Load from localStorage if available, else use consumer props
-      const savedConfig = JSON.parse(localStorage.getItem(`consumerConfig_${selectedConsumer.name}`) || '{}');
+      const savedConfig = selectedConsumer;
+      //const savedConfig = JSON.parse(localStorage.getItem(`consumerConfig_${selectedConsumer.name}`) || '{}');
       setTopic(savedConfig.topic || selectedConsumer.topic || "");
       setProtoContent(savedConfig.protoSchema || selectedConsumer.protoSchema || "");
       setMessageType(savedConfig.messageType || selectedConsumer.messageType || "");
+      debugger
       setJsonSample(savedConfig.samplePayload || selectedConsumer.samplePayload || "");
       setMessagePayload(savedConfig.samplePayload || selectedConsumer.samplePayload || "");
       setKey(savedConfig.sampleKey || selectedConsumer.sampleKey || "");

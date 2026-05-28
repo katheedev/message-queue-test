@@ -11,9 +11,10 @@ export interface KafkaEnvironmentConfig {
   bootstrapServers: string;
   groupId: string;
   securityProtocol: string;
-  saslMechanism: string;
-  username: string;
-  password: string;
+  saslMechanism?: string;
+  saslUsername?: string;
+  saslPassword?: string;
+  sslEnabled?: boolean;
   autoOffsetReset: string;
   enableAutoCommit: boolean;
   sessionTimeoutMs: number;
@@ -47,8 +48,8 @@ export interface KafkaEnvironmentConfig {
 export interface JmsEnvironmentConfig {
   providerUrl: string;
   connectionFactory: string;
-  username: string;
-  password: string;
+  username?: string;
+  password?: string;
   clientId: string;
   sessionTransacted: boolean;
   sessionAcknowledgeMode: string;
@@ -75,6 +76,7 @@ export interface Consumer {
   name: string;
   type: 'kafka' | 'jms';
   status: 'active' | 'inactive' | 'error';
+  description?: string; // Feature explanation
   lastTested?: string;
   topic?: string;
   protoSchema?: string;
@@ -82,6 +84,44 @@ export interface Consumer {
   samplePayload?: string;
   sampleKey?: string;
   messageFormat?: 'protobuf' | 'json' | 'string';
+}
+
+export interface App {
+  id: string;
+  name: string;
+  description: string;
+  kafkaConfig?: Partial<Record<Environment, Partial<KafkaEnvironmentConfig>>>;
+  jmsConfig?: Partial<Record<Environment, Partial<JmsEnvironmentConfig>>>;
+  consumers: Consumer[];
+  createdAt: string;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'qa';
+}
+
+export interface Assignment {
+  appId: string;
+  userId: string;
+  assignedAt: string;
+}
+
+export interface MessageLog {
+  id: string;
+  appId: string;
+  userId: string;
+  userName: string;
+  consumerName: string;
+  environment: Environment;
+  type: 'kafka' | 'jms';
+  payload: string;
+  timestamp: string;
+  status: 'success' | 'error';
+  result: string;
+  messageFormat: string;
 }
 
 export interface EnvironmentData {
