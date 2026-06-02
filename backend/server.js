@@ -254,6 +254,7 @@ const MQC = mq.MQC; // MQ Constants
 app.post('/api/ibmmq/send-message', async (req, res) => {
   const { config, queue, messagePayload, messageFormat } = req.body;
 
+  console.log('Received request to send IBM MQ message with config:', config, 'queue:', queue, 'messageFormat:', messageFormat);
   if (!config || !config.qmgr || !config.queue || !queue) {
     return res.status(400).json({
       status: 'error',

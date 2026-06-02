@@ -1,173 +1,182 @@
-export type Environment = 'dev' | 'stage1' | 'stage2' | 'stage3' | 'prod';
+export type UserRole = "admin" | "qa";
+export type EnvironmentKind = "staging" | "production";
+export type TransportType = "kafka" | "jms";
+export type MessageFormat = "json" | "protobuf" | "string";
 
-export interface EnvironmentConfig {
-  name: Environment;
-  displayName: string;
-  color: string;
-  description: string;
-}
-
-export interface KafkaEnvironmentConfig {
+export interface KafkaConfig {
   bootstrapServers: string;
+  clientId: string;
   groupId: string;
   securityProtocol: string;
-  saslMechanism?: string;
-  saslUsername?: string;
-  saslPassword?: string;
-  sslEnabled?: boolean;
-  autoOffsetReset: string;
-  enableAutoCommit: boolean;
-  sessionTimeoutMs: number;
-  heartbeatIntervalMs: number;
-  maxPollRecords: number;
-  requestTimeoutMs: number;
-  retryBackoffMs: number;
-  reconnectBackoffMs: number;
-  maxPollIntervalMs: number;
-  fetchMinBytes: number;
-  fetchMaxWaitMs: number;
-  maxPartitionFetchBytes: number;
-  checksumType: string;
-  keySerializer: string;
-  valueSerializer: string;
-  keyDeserializer: string;
-  valueDeserializer: string;
-  compressionType: string;
-  batchSize: number;
-  lingerMs: number;
-  bufferMemory: number;
-  acks: string;
-  retries: number;
-  maxInFlightRequestsPerConnection: number;
-  enableIdempotence: boolean;
-  transactionTimeoutMs: number;
-  transactionalId: string;
-  isolationLevel: string;
+  saslMechanism: string;
+  saslUsername: string;
+  saslPassword: string;
+  sslEnabled: boolean;
+  extraProperties: string;
 }
 
-export interface JmsEnvironmentConfig {
-  providerUrl: string;
+export interface JmsConfig {
+  qmgr: string;
+  host: string;
+  port: number;
+  channel: string;
+  user: string;
+  password: string;
   connectionFactory: string;
-  username?: string;
-  password?: string;
-  clientId: string;
-  sessionTransacted: boolean;
-  sessionAcknowledgeMode: string;
-  deliveryMode: string;
-  priority: number;
-  timeToLive: number;
-  disableMessageID: boolean;
-  disableMessageTimestamp: boolean;
-  connectionPoolSize: number;
-  connectionTimeout: number;
-  receiveTimeout: number;
-  sendTimeout: number;
-  asyncSend: boolean;
-  useCompression: boolean;
-  optimizeAcknowledge: boolean;
-  copyMessageOnSend: boolean;
-  useAsyncSend: boolean;
-  alwaysSyncSend: boolean;
-  producerWindowSize: number;
-  consumerWindowSize: number;
+  extraProperties: string;
 }
 
-export interface Consumer {
-  name: string;
-  type: 'kafka' | 'jms';
-  status: 'active' | 'inactive' | 'error';
-  description?: string; // Feature explanation
-  lastTested?: string;
-  topic?: string;
-  protoSchema?: string;
-  messageType?: string;
-  samplePayload?: string;
-  sampleKey?: string;
-  messageFormat?: 'protobuf' | 'json' | 'string';
-}
-
-export interface App {
+export interface ProducerProfile {
   id: string;
   name: string;
   description: string;
-  kafkaConfig?: Partial<Record<Environment, Partial<KafkaEnvironmentConfig>>>;
-  jmsConfig?: Partial<Record<Environment, Partial<JmsEnvironmentConfig>>>;
-  consumers: Consumer[];
+  transport: TransportType;
+  status: "active" | "inactive";
+  destination: string;
+  messageFormat: MessageFormat;
+  defaultKey: string;
+  defaultHeaders: string;
+  defaultPayload: string;
+  protoSchema: string;
+  messageType: string;
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface AppEnvironment {
+  id: string;
+  name: string;
+  kind: EnvironmentKind;
+  description: string;
+  kafkaConfig: KafkaConfig;
+  jmsConfig: JmsConfig;
+  producers: ProducerProfile[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessagingApplication {
+  id: string;
+  name: string;
+  description: string;
+  environments: AppEnvironment[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'qa';
+  role: UserRole;
+  passwordHash: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt?: string;
 }
 
-export interface Assignment {
-  appId: string;
-  userId: string;
-  assignedAt: string;
+export interface SessionUser {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  active: boolean;
+}
+
+export interface LocalEnvironmentOverride {
+  kafkaConfig?: KafkaConfig;
+  jmsConfig?: JmsConfig;
 }
 
 export interface MessageLog {
   id: string;
   appId: string;
+  appName: string;
+  environmentId: string;
+  environmentName: string;
+  producerId: string;
+  producerName: string;
   userId: string;
   userName: string;
-  consumerName: string;
-  environment: Environment;
-  type: 'kafka' | 'jms';
+  transport: TransportType;
   payload: string;
   timestamp: string;
-  status: 'success' | 'error';
+  status: "success" | "error";
   result: string;
-  messageFormat: string;
+  messageFormat: MessageFormat;
 }
 
-export interface EnvironmentData {
-  kafka: KafkaEnvironmentConfig;
-  jms: JmsEnvironmentConfig;
-  consumers: Consumer[];
-}
+export const ENVIRONMENT_KIND_META: Record<
+  EnvironmentKind,
+  { label: string; badgeClassName: string }
+> = {
+  staging: {
+    label: "Staging",
+    badgeClassName: "border-amber-500/40 bg-amber-500/10 text-amber-200",
+  },
+  production: {
+    label: "Production",
+    badgeClassName: "border-rose-500/40 bg-rose-500/10 text-rose-200",
+  },
+};
 
-export interface FirebaseEnvironmentDoc {
-  environments: Record<Environment, EnvironmentData>;
-  metadata: {
-    lastUpdated: string;
-    version: string;
-    userId?: string;
-  };
-}
+export const createDefaultKafkaConfig = (): KafkaConfig => ({
+  bootstrapServers: "",
+  clientId: "mq-tester-client",
+  groupId: "mq-tester-group",
+  securityProtocol: "PLAINTEXT",
+  saslMechanism: "",
+  saslUsername: "",
+  saslPassword: "",
+  sslEnabled: false,
+  extraProperties: "{}",
+});
 
-export const ENVIRONMENTS: EnvironmentConfig[] = [
-  {
-    name: 'dev',
-    displayName: 'Development',
-    color: 'bg-blue-500',
-    description: 'Local development environment'
-  },
-  {
-    name: 'stage1',
-    displayName: 'Stage 1',
-    color: 'bg-yellow-500',
-    description: 'Initial staging environment'
-  },
-  {
-    name: 'stage2',
-    displayName: 'Stage 2',
-    color: 'bg-orange-500',
-    description: 'Secondary staging environment'
-  },
-  {
-    name: 'stage3',
-    displayName: 'Stage 3',
-    color: 'bg-purple-500',
-    description: 'Pre-production staging environment'
-  },
-  {
-    name: 'prod',
-    displayName: 'Production',
-    color: 'bg-red-500',
-    description: 'Production environment'
-  }
-];
+export const createDefaultJmsConfig = (): JmsConfig => ({
+  qmgr: "",
+  host: "localhost",
+  port: 1414,
+  channel: "DEV.APP.SVRCONN",
+  user: "",
+  password: "",
+  connectionFactory: "ConnectionFactory",
+  extraProperties: "{}",
+});
+
+export const createDefaultProducerProfile = (): Omit<
+  ProducerProfile,
+  "id" | "createdAt" | "updatedAt"
+> => ({
+  name: "",
+  description: "",
+  transport: "kafka",
+  status: "active",
+  destination: "",
+  messageFormat: "json",
+  defaultKey: "",
+  defaultHeaders: "{}",
+  defaultPayload: "{\n  \n}",
+  protoSchema: 'syntax = "proto3";\n\nmessage SampleMessage {\n  string id = 1;\n}\n',
+  messageType: "SampleMessage",
+});
+
+export const createDefaultEnvironment = (
+  name = "Staging",
+  kind: EnvironmentKind = "staging",
+): Omit<AppEnvironment, "id" | "createdAt" | "updatedAt"> => ({
+  name,
+  kind,
+  description: "",
+  kafkaConfig: createDefaultKafkaConfig(),
+  jmsConfig: createDefaultJmsConfig(),
+  producers: [],
+});
+
+export const toSessionUser = (user: User): SessionUser => ({
+  id: user.id,
+  email: user.email,
+  name: user.name,
+  role: user.role,
+  active: user.active,
+});
