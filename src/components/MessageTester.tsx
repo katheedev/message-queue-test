@@ -399,16 +399,28 @@ export const MessageTester = ({ selectedConsumer, appId }: MessageTesterProps) =
         }
       }
 
+      let config;
+      try {
+        config = JSON.parse(localStorage.getItem('kafkaConfig') || '{}');
+      } catch (e) {
+        config = {};
+      }
+
+      if (selectedConsumer?.type === 'kafka' && !config.bootstrapServers) {
+        throw new Error('Kafka configuration is missing. Please set it in the Kafka Config tab first.');
+      }
+
       const response = await fetch('http://localhost:3001/api/kafka/send-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: JSON.parse(localStorage.getItem('kafkaConfig') || '{}'),
+          config,
           topic,
           messagePayload: payload,
           protoSchema: selectedConsumer?.messageFormat === 'protobuf' ? protoContent : undefined,
           messageType: selectedConsumer?.messageFormat === 'protobuf' ? messageType : undefined,
           key,
+          headers: parsedHeaders,
           messageFormat: selectedConsumer?.messageFormat
         })
       });

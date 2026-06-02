@@ -158,10 +158,17 @@ app.post('/api/kafka/consumer-groups', async (req, res) => {
 
 // Send Kafka message
 app.post('/api/kafka/send-message', async (req, res) => {
-  const { config, topic, messagePayload, protoSchema, messageType, key, messageFormat } = req.body;
+  const { config, topic, messagePayload, protoSchema, messageType, key, headers, messageFormat } = req.body;
+
+  if (!config || !config.bootstrapServers) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Kafka configuration (bootstrapServers) is missing. Please save the configuration in the Kafka Config tab first.'
+    });
+  }
 
   try {
-        const kafka = new Kafka({
+    const kafka = new Kafka({
       brokers: config.bootstrapServers.split(',').map(s => s.trim()),
       ...(config.securityProtocol !== 'PLAINTEXT' && {
         ssl: config.securityProtocol === 'SSL' ? true : undefined,
@@ -220,7 +227,7 @@ app.post('/api/kafka/send-message', async (req, res) => {
 
     await producer.send({
       topic,
-      messages: [{ key: key || null, value }]
+      messages: [{ key: key || null, value, headers }]
     });
 
     await producer.disconnect();
