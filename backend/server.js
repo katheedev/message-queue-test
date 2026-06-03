@@ -250,43 +250,76 @@ app.post('/api/kafka/send-message', async (req, res) => {
 const mq = require('ibmmq');
 const MQC = mq.MQC; // MQ Constants
 
+const createMqConnectionOptions = (config) => {
+  const connDetails = {
+    qMgr: config.qmgr,
+    host: config.host || 'localhost',
+    port: config.port || 1414,
+    channel: config.channel || 'DEV.APP.SVRCONN',
+    user: config.user || '',
+    password: config.password || ''
+  };
+
+  const cno = new mq.MQCNO();
+  cno.Options = MQC.MQCNO_NONE;
+
+  if (connDetails.user && connDetails.password) {
+    const csp = new mq.MQCSP();
+    csp.UserId = connDetails.user;
+    csp.Password = connDetails.password;
+    cno.SecurityParms = csp;
+  }
+
+  const cd = new mq.MQCD();
+  cd.ConnectionName = `${connDetails.host}(${connDetails.port})`;
+  cd.ChannelName = connDetails.channel;
+  cno.ClientConn = cd;
+
+  return { connDetails, cno };
+};
+
+app.post('/api/ibmmq/test-connection', async (req, res) => {
+  const config = req.body;
+
+  if (!config || !config.qmgr) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid configuration: qmgr is required'
+    });
+  }
+
+  try {
+    const { connDetails, cno } = createMqConnectionOptions(config);
+    const hConn = await mq.ConnxPromise(connDetails.qMgr, cno);
+    await mq.DiscPromise(hConn);
+
+    res.json({
+      status: 'connected',
+      message: 'Successfully connected to IBM MQ queue manager'
+    });
+  } catch (error) {
+    console.error('Error testing IBM MQ connection:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to connect'
+    });
+  }
+});
+
 // Send IBM MQ message
 app.post('/api/ibmmq/send-message', async (req, res) => {
   const { config, queue, messagePayload, messageFormat } = req.body;
 
   console.log('Received request to send IBM MQ message with config:', config, 'queue:', queue, 'messageFormat:', messageFormat);
-  if (!config || !config.qmgr || !config.queue || !queue) {
+  if (!config || !config.qmgr || !queue) {
     return res.status(400).json({
       status: 'error',
-      message: 'Invalid configuration: qmgr, queue, and queue name are required'
+      message: 'Invalid configuration: qmgr and queue name are required'
     });
   }
 
   try {
-    const connDetails = {
-      qMgr: config.qmgr,
-      host: config.host || 'localhost',
-      port: config.port || 1414,
-      channel: config.channel || 'DEV.APP.SVRCONN',
-      user: config.user || '',
-      password: config.password || ''
-    };
-
-    const cno = new mq.MQCNO();
-    cno.Options = MQC.MQCNO_NONE;
-
-    if (connDetails.user && connDetails.password) {
-      const csp = new mq.MQCSP();
-      csp.UserId = connDetails.user;
-      csp.Password = connDetails.password;
-      cno.SecurityParms = csp;
-    }
-
-    const cd = new mq.MQCD();
-    cd.ConnectionName = `${connDetails.host}(${connDetails.port})`;
-    cd.ChannelName = connDetails.channel;
-
-    cno.ClientConn = cd;
+    const { connDetails, cno } = createMqConnectionOptions(config);
 
     const hConn = await mq.ConnxPromise(connDetails.qMgr, cno);
     const od = new mq.MQOD();
@@ -343,30 +376,7 @@ app.post('/api/ibmmq/receive-message', async (req, res) => {
   }
 
   try {
-    const connDetails = {
-      qMgr: config.qmgr,
-      host: config.host || 'localhost',
-      port: config.port || 1414,
-      channel: config.channel || 'DEV.APP.SVRCONN',
-      user: config.user || '',
-      password: config.password || ''
-    };
-
-    const cno = new mq.MQCNO();
-    cno.Options = MQC.MQCNO_NONE;
-
-    if (connDetails.user && connDetails.password) {
-      const csp = new mq.MQCSP();
-      csp.UserId = connDetails.user;
-      csp.Password = connDetails.password;
-      cno.SecurityParms = csp;
-    }
-
-    const cd = new mq.MQCD();
-    cd.ConnectionName = `${connDetails.host}(${connDetails.port})`;
-    cd.ChannelName = connDetails.channel;
-
-    cno.ClientConn = cd;
+    const { connDetails, cno } = createMqConnectionOptions(config);
 
     const hConn = await mq.ConnxPromise(connDetails.qMgr, cno);
     const od = new mq.MQOD();
@@ -429,30 +439,7 @@ app.post('/api/ibmmq/channels', async (req, res) => {
   }
 
   try {
-    const connDetails = {
-      qMgr: config.qmgr,
-      host: config.host || 'localhost',
-      port: config.port || 1414,
-      channel: config.channel || 'DEV.APP.SVRCONN',
-      user: config.user || '',
-      password: config.password || ''
-    };
-
-    const cno = new mq.MQCNO();
-    cno.Options = MQC.MQCNO_NONE;
-
-    if (connDetails.user && connDetails.password) {
-      const csp = new mq.MQCSP();
-      csp.UserId = connDetails.user;
-      csp.Password = connDetails.password;
-      cno.SecurityParms = csp;
-    }
-
-    const cd = new mq.MQCD();
-    cd.ConnectionName = `${connDetails.host}(${connDetails.port})`;
-    cd.ChannelName = connDetails.channel;
-
-    cno.ClientConn = cd;
+    const { connDetails, cno } = createMqConnectionOptions(config);
 
     const hConn = await mq.ConnxPromise(connDetails.qMgr, cno);
 

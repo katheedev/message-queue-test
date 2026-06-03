@@ -11,10 +11,17 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { SessionUser, User, UserRole, toSessionUser } from "@/types/environment";
+import {
+  SessionUser,
+  User,
+  UserApplicationAccess,
+  UserRole,
+  toSessionUser,
+} from "@/types/environment";
 import { SecurityService } from "@/services/securityService";
 
 const USERS_COLLECTION = "users";
+const USER_ACCESS_COLLECTION = "user-access";
 
 export const DEFAULT_ADMIN_CREDENTIALS = {
   email: "admin@mqtester.local",
@@ -176,7 +183,7 @@ export class UserService {
     name: string;
     role: UserRole;
     password: string;
-  }): Promise<void> {
+  }): Promise<string> {
     const email = normalizeEmail(input.email);
     const existing = await this.getUserByEmail(email);
     if (existing) {
@@ -196,6 +203,8 @@ export class UserService {
       createdAt: now,
       updatedAt: now,
     });
+
+    return reference.id;
   }
 
   static async updateUser(
@@ -253,6 +262,40 @@ export class UserService {
     }
 
     await deleteDoc(doc(db, USERS_COLLECTION, userId));
+    await deleteDoc(doc(db, USER_ACCESS_COLLECTION, userId));
     await ensureAdminCount();
+  }
+
+  static async getUserAccess(userId: string): Promise<UserApplicationAccess[]> {
+    const snapshot = await getDoc(doc(db, USER_ACCESS_COLLECTION, userId));
+    if (!snapshot.exists()) {
+      return [];
+    }
+
+    const data = snapshot.data();
+    const accessList = Array.isArray(data.applications) ? data.applications : [];
+    return accessList
+      .filter((entry) => entry?.appId)
+      .map((entry) => ({
+        appId: entry.appId,
+        environmentIds: Array.isArray(entry.environmentIds)
+          ? entry.environmentIds.filter(Boolean)
+          : [],
+      }));
+  }
+
+  static async updateUserAccess(
+    userId: string,
+    applications: UserApplicationAccess[],
+  ): Promise<void> {
+    await setDoc(doc(db, USER_ACCESS_COLLECTION, userId), {
+      applications: applications
+        .filter((entry) => entry.appId && entry.environmentIds.length > 0)
+        .map((entry) => ({
+          appId: entry.appId,
+          environmentIds: Array.from(new Set(entry.environmentIds)),
+        })),
+      updatedAt: new Date().toISOString(),
+    });
   }
 }

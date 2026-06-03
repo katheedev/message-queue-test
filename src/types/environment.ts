@@ -84,6 +84,11 @@ export interface SessionUser {
   active: boolean;
 }
 
+export interface UserApplicationAccess {
+  appId: string;
+  environmentIds: string[];
+}
+
 export interface LocalEnvironmentOverride {
   kafkaConfig?: KafkaConfig;
   jmsConfig?: JmsConfig;

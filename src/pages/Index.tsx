@@ -35,8 +35,8 @@ import {
   ProducerProfile,
   SessionUser,
   User,
+  UserApplicationAccess,
   UserRole,
-  createDefaultEnvironment,
   createDefaultJmsConfig,
   createDefaultKafkaConfig,
   createDefaultProducerProfile,
@@ -146,6 +146,43 @@ const getProducerDefaults = (producer: ProducerProfile | null) => ({
   messageType: producer?.messageType || "",
 });
 
+const cloneAccessEntries = (entries: UserApplicationAccess[]) =>
+  entries.map((entry) => ({
+    appId: entry.appId,
+    environmentIds: [...entry.environmentIds],
+  }));
+
+const filterApplicationsForAccess = (
+  sourceApplications: MessagingApplication[],
+  accessEntries: UserApplicationAccess[],
+) => {
+  const accessMap = new Map(
+    accessEntries.map((entry) => [entry.appId, new Set(entry.environmentIds)]),
+  );
+
+  return sourceApplications
+    .map((application) => {
+      const allowedEnvironmentIds = accessMap.get(application.id);
+      if (!allowedEnvironmentIds) {
+        return null;
+      }
+
+      const environments = application.environments.filter((environment) =>
+        allowedEnvironmentIds.has(environment.id),
+      );
+
+      if (environments.length === 0) {
+        return null;
+      }
+
+      return {
+        ...application,
+        environments,
+      };
+    })
+    .filter(Boolean) as MessagingApplication[];
+};
+
 const Index = () => {
   const { currentUser, loading: authLoading, isAdmin, login, logout, refreshSession } = useUser();
   const { toast } = useToast();
@@ -157,12 +194,14 @@ const Index = () => {
   const [workspaceLoading, setWorkspaceLoading] = useState(true);
   const [applications, setApplications] = useState<MessagingApplication[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [accessByUser, setAccessByUser] = useState<Record<string, UserApplicationAccess[]>>({});
   const [logs, setLogs] = useState<MessageLog[]>([]);
   const [selectedAppId, setSelectedAppId] = useState("");
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState("");
   const [selectedProducerId, setSelectedProducerId] = useState("");
   const [activeTab, setActiveTab] = useState("workspace");
   const [userForm, setUserForm] = useState<UserFormState>(createEmptyUserForm());
+  const [userAccessDraft, setUserAccessDraft] = useState<UserApplicationAccess[]>([]);
   const [applicationForm, setApplicationForm] = useState<ApplicationFormState>(createEmptyApplicationForm());
   const [environmentForm, setEnvironmentForm] = useState<EnvironmentFormState>(createEmptyEnvironmentForm());
   const [producerForm, setProducerForm] = useState({
@@ -177,10 +216,21 @@ const Index = () => {
   const [runResults, setRunResults] = useState<RunResult[]>([]);
   const [isSavingSharedConfig, setIsSavingSharedConfig] = useState(false);
   const [isSavingLocalConfig, setIsSavingLocalConfig] = useState(false);
+  const [isSavingUserAccess, setIsSavingUserAccess] = useState(false);
   const [isSavingProducer, setIsSavingProducer] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isTestingKafka, setIsTestingKafka] = useState(false);
+  const [isTestingJms, setIsTestingJms] = useState(false);
   const [validationMessage, setValidationMessage] = useState<string>("");
   const [validationStatus, setValidationStatus] = useState<"success" | "error" | "idle">("idle");
+  const [kafkaConnectionStatus, setKafkaConnectionStatus] = useState<{
+    status: "idle" | "success" | "error";
+    message: string;
+  }>({ status: "idle", message: "" });
+  const [jmsConnectionStatus, setJmsConnectionStatus] = useState<{
+    status: "idle" | "success" | "error";
+    message: string;
+  }>({ status: "idle", message: "" });
 
   const selectedApplication = useMemo(
     () => applications.find((application) => application.id === selectedAppId) || null,
@@ -228,12 +278,23 @@ const Index = () => {
 
     setWorkspaceLoading(true);
     try {
-      const [nextApplications, nextUsers] = await Promise.all([
-        AppService.getApplications(),
-        isAdmin ? UserService.getUsers() : Promise.resolve([]),
-      ]);
-      setApplications(nextApplications);
-      setUsers(nextUsers);
+      const nextApplications = await AppService.getApplications();
+
+      if (sessionUser.role === "admin") {
+        const nextUsers = await UserService.getUsers();
+        const accessEntries = await Promise.all(
+          nextUsers.map(async (user) => [user.id, await UserService.getUserAccess(user.id)] as const),
+        );
+
+        setApplications(nextApplications);
+        setUsers(nextUsers);
+        setAccessByUser(Object.fromEntries(accessEntries));
+      } else {
+        const nextAccess = await UserService.getUserAccess(sessionUser.id);
+        setApplications(filterApplicationsForAccess(nextApplications, nextAccess));
+        setUsers([]);
+        setAccessByUser({ [sessionUser.id]: nextAccess });
+      }
     } finally {
       setWorkspaceLoading(false);
     }
@@ -252,10 +313,12 @@ const Index = () => {
     if (!currentUser) {
       setApplications([]);
       setUsers([]);
+      setAccessByUser({});
       setLogs([]);
       setSelectedAppId("");
       setSelectedEnvironmentId("");
       setSelectedProducerId("");
+      setUserAccessDraft([]);
       return;
     }
 
@@ -318,6 +381,8 @@ const Index = () => {
       setSharedJmsDraft(createDefaultJmsConfig());
       setLocalKafkaDraft(createDefaultKafkaConfig());
       setLocalJmsDraft(createDefaultJmsConfig());
+      setKafkaConnectionStatus({ status: "idle", message: "" });
+      setJmsConnectionStatus({ status: "idle", message: "" });
       return;
     }
 
@@ -333,6 +398,8 @@ const Index = () => {
       setLocalKafkaDraft(localOverride.kafkaConfig || selectedEnvironment.kafkaConfig);
       setLocalJmsDraft(localOverride.jmsConfig || selectedEnvironment.jmsConfig);
     }
+    setKafkaConnectionStatus({ status: "idle", message: "" });
+    setJmsConnectionStatus({ status: "idle", message: "" });
   }, [currentUser, selectedApplication?.id, selectedEnvironment]);
 
   useEffect(() => {
@@ -425,6 +492,82 @@ const Index = () => {
       title: "Local override cleared",
       description: "Testing config reverted to the admin-managed environment config.",
     });
+  };
+
+  const toggleAccessEnvironment = (appId: string, environmentId: string) => {
+    setUserAccessDraft((previous) => {
+      const existing = previous.find((entry) => entry.appId === appId);
+
+      if (!existing) {
+        return [...previous, { appId, environmentIds: [environmentId] }];
+      }
+
+      const hasEnvironment = existing.environmentIds.includes(environmentId);
+      const environmentIds = hasEnvironment
+        ? existing.environmentIds.filter((id) => id !== environmentId)
+        : [...existing.environmentIds, environmentId];
+
+      if (environmentIds.length === 0) {
+        return previous.filter((entry) => entry.appId !== appId);
+      }
+
+      return previous.map((entry) =>
+        entry.appId === appId ? { ...entry, environmentIds } : entry,
+      );
+    });
+  };
+
+  const handleTestConnection = async (transport: "kafka" | "jms") => {
+    const endpoint =
+      transport === "kafka"
+        ? "http://localhost:3001/api/kafka/test-connection"
+        : "http://localhost:3001/api/ibmmq/test-connection";
+    const config = transport === "kafka"
+      ? isAdmin
+        ? sharedKafkaDraft
+        : localKafkaDraft
+      : isAdmin
+        ? sharedJmsDraft
+        : localJmsDraft;
+    const setLoading = transport === "kafka" ? setIsTestingKafka : setIsTestingJms;
+    const setStatus =
+      transport === "kafka" ? setKafkaConnectionStatus : setJmsConnectionStatus;
+
+    setLoading(true);
+    setStatus({ status: "idle", message: "" });
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      });
+      const result = await response.json();
+
+      if (!response.ok || result.status === "error") {
+        throw new Error(result.message || "Connection test failed.");
+      }
+
+      setStatus({
+        status: "success",
+        message: result.message || "Connection successful.",
+      });
+      toast({
+        title: `${transport.toUpperCase()} connection successful`,
+        description: result.message,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Connection test failed.";
+      setStatus({ status: "error", message });
+      toast({
+        title: `${transport.toUpperCase()} connection failed`,
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const resetProducerForm = () => {
@@ -644,6 +787,8 @@ const Index = () => {
     }
 
     try {
+      let targetUserId = userForm.id;
+
       if (userForm.id) {
         await UserService.updateUser(userForm.id, {
           name: userForm.name,
@@ -658,7 +803,7 @@ const Index = () => {
         if (!userForm.password.trim()) {
           throw new Error("A password is required when creating a new user.");
         }
-        await UserService.createUser({
+        targetUserId = await UserService.createUser({
           name: userForm.name,
           email: userForm.email,
           role: userForm.role,
@@ -666,9 +811,19 @@ const Index = () => {
         });
       }
 
+      if (targetUserId) {
+        setIsSavingUserAccess(true);
+        if (userForm.role === "qa") {
+          await UserService.updateUserAccess(targetUserId, userAccessDraft);
+        } else {
+          await UserService.updateUserAccess(targetUserId, []);
+        }
+      }
+
       await loadWorkspace();
       await refreshSession();
       setUserForm(createEmptyUserForm());
+      setUserAccessDraft([]);
       toast({
         title: userForm.id ? "User updated" : "User created",
         description: "Authentication data has been saved.",
@@ -679,6 +834,8 @@ const Index = () => {
         description: error instanceof Error ? error.message : "Unable to save user.",
         variant: "destructive",
       });
+    } finally {
+      setIsSavingUserAccess(false);
     }
   };
 
@@ -1447,27 +1604,73 @@ const Index = () => {
                     </div>
 
                     <div className="grid gap-6 xl:grid-cols-2">
-                      {renderConfigEditor(
-                        "Kafka connection",
-                        "These settings are used for Kafka producer tests.",
-                        isAdmin ? sharedKafkaDraft : localKafkaDraft,
-                        (field, value) =>
-                          isAdmin
-                            ? setSharedKafkaDraft((previous) => ({ ...previous, [field]: value }))
-                            : setLocalKafkaDraft((previous) => ({ ...previous, [field]: value })),
-                        true,
-                      )}
+                      <div className="space-y-3">
+                        {renderConfigEditor(
+                          "Kafka connection",
+                          "These settings are used for Kafka producer tests.",
+                          isAdmin ? sharedKafkaDraft : localKafkaDraft,
+                          (field, value) =>
+                            isAdmin
+                              ? setSharedKafkaDraft((previous) => ({ ...previous, [field]: value }))
+                              : setLocalKafkaDraft((previous) => ({ ...previous, [field]: value })),
+                          true,
+                        )}
+                        <div className="flex flex-wrap items-center gap-3">
+                          <Button
+                            variant="outline"
+                            onClick={() => handleTestConnection("kafka")}
+                            disabled={isTestingKafka}
+                          >
+                            {isTestingKafka ? "Testing Kafka..." : "Test Kafka connection"}
+                          </Button>
+                          {kafkaConnectionStatus.status !== "idle" && (
+                            <div
+                              className={cn(
+                                "rounded-xl border px-3 py-2 text-sm",
+                                kafkaConnectionStatus.status === "success"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+                                  : "border-rose-500/30 bg-rose-500/10 text-rose-100",
+                              )}
+                            >
+                              {kafkaConnectionStatus.message}
+                            </div>
+                          )}
+                        </div>
+                      </div>
 
-                      {renderConfigEditor(
-                        "JMS connection",
-                        "These settings are used for IBM MQ / JMS producer tests.",
-                        isAdmin ? sharedJmsDraft : localJmsDraft,
-                        (field, value) =>
-                          isAdmin
-                            ? setSharedJmsDraft((previous) => ({ ...previous, [field]: value }))
-                            : setLocalJmsDraft((previous) => ({ ...previous, [field]: value })),
-                        false,
-                      )}
+                      <div className="space-y-3">
+                        {renderConfigEditor(
+                          "JMS connection",
+                          "These settings are used for IBM MQ / JMS producer tests.",
+                          isAdmin ? sharedJmsDraft : localJmsDraft,
+                          (field, value) =>
+                            isAdmin
+                              ? setSharedJmsDraft((previous) => ({ ...previous, [field]: value }))
+                              : setLocalJmsDraft((previous) => ({ ...previous, [field]: value })),
+                          false,
+                        )}
+                        <div className="flex flex-wrap items-center gap-3">
+                          <Button
+                            variant="outline"
+                            onClick={() => handleTestConnection("jms")}
+                            disabled={isTestingJms}
+                          >
+                            {isTestingJms ? "Testing JMS..." : "Test JMS connection"}
+                          </Button>
+                          {jmsConnectionStatus.status !== "idle" && (
+                            <div
+                              className={cn(
+                                "rounded-xl border px-3 py-2 text-sm",
+                                jmsConnectionStatus.status === "success"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+                                  : "border-rose-500/30 bg-rose-500/10 text-rose-100",
+                              )}
+                            >
+                              {jmsConnectionStatus.message}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap gap-3">
@@ -1877,12 +2080,84 @@ const Index = () => {
                               }
                             />
                           </div>
+                          {userForm.role === "qa" && (
+                            <div className="space-y-3 rounded-2xl border border-white/10 p-4">
+                              <div>
+                                <div className="text-sm font-medium text-white">QA access</div>
+                                <div className="text-xs text-slate-400">
+                                  Admin controls which apps and environments this QA can use.
+                                </div>
+                              </div>
+                              <div className="space-y-3">
+                                {applications.length === 0 ? (
+                                  <div className="text-sm text-slate-400">
+                                    Create applications and environments before assigning QA access.
+                                  </div>
+                                ) : (
+                                  applications.map((application) => {
+                                    const selectedEntry = userAccessDraft.find(
+                                      (entry) => entry.appId === application.id,
+                                    );
+
+                                    return (
+                                      <div
+                                        key={application.id}
+                                        className="rounded-xl border border-white/10 p-3"
+                                      >
+                                        <div className="font-medium text-white">
+                                          {application.name}
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                          {application.environments.map((environment) => {
+                                            const isChecked = selectedEntry?.environmentIds.includes(
+                                              environment.id,
+                                            );
+
+                                            return (
+                                              <button
+                                                key={environment.id}
+                                                type="button"
+                                                onClick={() =>
+                                                  toggleAccessEnvironment(
+                                                    application.id,
+                                                    environment.id,
+                                                  )
+                                                }
+                                                className={cn(
+                                                  "rounded-full border px-3 py-1 text-xs transition",
+                                                  isChecked
+                                                    ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100"
+                                                    : "border-white/10 bg-white/5 text-slate-300",
+                                                )}
+                                              >
+                                                {environment.name}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </div>
+                          )}
                           <div className="flex flex-wrap gap-3">
-                            <Button onClick={handleSaveUser}>
+                            <Button onClick={handleSaveUser} disabled={isSavingUserAccess}>
                               <KeyRound className="mr-2 h-4 w-4" />
-                              {userForm.id ? "Update user" : "Create user"}
+                              {isSavingUserAccess
+                                ? "Saving..."
+                                : userForm.id
+                                  ? "Update user"
+                                  : "Create user"}
                             </Button>
-                            <Button variant="outline" onClick={() => setUserForm(createEmptyUserForm())}>
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setUserForm(createEmptyUserForm());
+                                setUserAccessDraft([]);
+                              }}
+                            >
                               New user
                             </Button>
                           </div>
@@ -1926,7 +2201,8 @@ const Index = () => {
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      onClick={() =>
+                                      onClick={async () => {
+                                        const nextAccess = accessByUser[user.id] || [];
                                         setUserForm({
                                           id: user.id,
                                           name: user.name,
@@ -1934,8 +2210,9 @@ const Index = () => {
                                           role: user.role,
                                           password: "",
                                           active: user.active,
-                                        })
-                                      }
+                                        });
+                                        setUserAccessDraft(cloneAccessEntries(nextAccess));
+                                      }}
                                     >
                                       Edit
                                     </Button>
@@ -1947,6 +2224,28 @@ const Index = () => {
                                       Delete
                                     </Button>
                                   </div>
+                                  {user.role === "qa" && (
+                                    <div className="mt-3 text-xs text-slate-400">
+                                      Access:
+                                      {" "}
+                                      {(accessByUser[user.id] || []).length === 0
+                                        ? "No applications assigned"
+                                        : (accessByUser[user.id] || [])
+                                            .map((entry) => {
+                                              const application = applications.find(
+                                                (candidate) => candidate.id === entry.appId,
+                                              );
+                                              const environmentNames = application?.environments
+                                                .filter((environment) =>
+                                                  entry.environmentIds.includes(environment.id),
+                                                )
+                                                .map((environment) => environment.name)
+                                                .join(", ");
+                                              return `${application?.name || "Unknown"} (${environmentNames || "No environments"})`;
+                                            })
+                                            .join(" · ")}
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
