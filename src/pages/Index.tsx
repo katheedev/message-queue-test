@@ -121,6 +121,10 @@ const createEmptyEnvironmentForm = (): EnvironmentFormState => ({
   description: "",
 });
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, "");
+
+const buildApiUrl = (path: string) => `${API_BASE_URL}${path}`;
+
 const createSendForm = (producer?: ProducerProfile | null): SendFormState => ({
   destination: producer?.destination || "",
   key: producer?.defaultKey || "",
@@ -520,8 +524,8 @@ const Index = () => {
   const handleTestConnection = async (transport: "kafka" | "jms") => {
     const endpoint =
       transport === "kafka"
-        ? "http://localhost:3001/api/kafka/test-connection"
-        : "http://localhost:3001/api/ibmmq/test-connection";
+        ? buildApiUrl("/api/kafka/test-connection")
+        : buildApiUrl("/api/ibmmq/test-connection");
     const config = transport === "kafka"
       ? isAdmin
         ? sharedKafkaDraft
@@ -681,8 +685,8 @@ const Index = () => {
 
       const endpoint =
         selectedProducer.transport === "kafka"
-          ? "http://localhost:3001/api/kafka/send-message"
-          : "http://localhost:3001/api/ibmmq/send-message";
+          ? buildApiUrl("/api/kafka/send-message")
+          : buildApiUrl("/api/ibmmq/send-message");
 
       const requestBody =
         selectedProducer.transport === "kafka"
