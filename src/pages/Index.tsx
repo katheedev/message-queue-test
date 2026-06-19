@@ -121,7 +121,20 @@ const createEmptyEnvironmentForm = (): EnvironmentFormState => ({
   description: "",
 });
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, "");
+const normalizeApiBaseUrl = (value?: string) => {
+  const trimmed = (value || "").trim();
+  if (!trimmed) {
+    return "http://localhost:3001";
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/\/+$/, "");
+  }
+
+  return `http://${trimmed}`.replace(/\/+$/, "");
+};
+
+const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
 const buildApiUrl = (path: string) => `${API_BASE_URL}${path}`;
 

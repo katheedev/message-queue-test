@@ -8,6 +8,8 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { isLocalEnvironment } from "@/lib/runtimeEnvironment";
+import { LocalDatabaseService } from "@/services/localDatabaseService";
 import {
   AppEnvironment,
   EnvironmentKind,
@@ -35,7 +37,11 @@ const prettifyLegacyEnvironmentName = (value: string) =>
     .replace(/[-_]/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
-const normalizeProducer = (rawProducer: any): ProducerProfile => {
+const toRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+const normalizeProducer = (rawValue: unknown): ProducerProfile => {
+  const rawProducer = toRecord(rawValue);
   const createdAt = rawProducer.createdAt || now();
   const updatedAt = rawProducer.updatedAt || createdAt;
 
@@ -65,7 +71,8 @@ const normalizeProducer = (rawProducer: any): ProducerProfile => {
   };
 };
 
-const normalizeEnvironment = (rawEnvironment: any): AppEnvironment => {
+const normalizeEnvironment = (rawValue: unknown): AppEnvironment => {
+  const rawEnvironment = toRecord(rawValue);
   const createdAt = rawEnvironment.createdAt || now();
   const updatedAt = rawEnvironment.updatedAt || createdAt;
 
@@ -91,9 +98,10 @@ const normalizeEnvironment = (rawEnvironment: any): AppEnvironment => {
 };
 
 const normalizeLegacyApplication = (
-  rawApplication: any,
+  rawValue: unknown,
   applicationId: string,
 ): MessagingApplication => {
+  const rawApplication = toRecord(rawValue);
   const createdAt = rawApplication.createdAt || now();
   const updatedAt = rawApplication.updatedAt || createdAt;
 
@@ -159,6 +167,18 @@ const persistApplication = async (
   applicationId: string,
   input: Partial<MessagingApplication>,
 ) => {
+  if (isLocalEnvironment()) {
+    LocalDatabaseService.updateDocument("applications", applicationId, {
+      ...input,
+      updatedAt: now(),
+    });
+    return;
+  }
+
+  if (!db) {
+    throw new Error("Firebase is not configured.");
+  }
+
   await updateDoc(doc(db, APPLICATIONS_COLLECTION, applicationId), {
     ...input,
     updatedAt: now(),
@@ -167,6 +187,16 @@ const persistApplication = async (
 
 export class AppService {
   static async getApplications(): Promise<MessagingApplication[]> {
+    if (isLocalEnvironment()) {
+      return LocalDatabaseService.listDocuments<Record<string, unknown>>(
+        APPLICATIONS_COLLECTION,
+      ).map((entry) => normalizeLegacyApplication(entry.data, entry.id));
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     const snapshot = await getDocs(collection(db, APPLICATIONS_COLLECTION));
     return snapshot.docs.map((entry) =>
       normalizeLegacyApplication(entry.data(), entry.id),
@@ -176,6 +206,20 @@ export class AppService {
   static async getApplication(
     applicationId: string,
   ): Promise<MessagingApplication | null> {
+    if (isLocalEnvironment()) {
+      const document = LocalDatabaseService.getDocument<Record<string, unknown>>(
+        APPLICATIONS_COLLECTION,
+        applicationId,
+      );
+      return document
+        ? normalizeLegacyApplication(document.data, document.id)
+        : null;
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     const reference = doc(db, APPLICATIONS_COLLECTION, applicationId);
     const snapshot = await getDoc(reference);
     if (!snapshot.exists()) {
@@ -190,6 +234,20 @@ export class AppService {
     description: string;
   }): Promise<string> {
     const timestamp = now();
+    if (isLocalEnvironment()) {
+      return LocalDatabaseService.createDocument(APPLICATIONS_COLLECTION, {
+        name: input.name.trim(),
+        description: input.description.trim(),
+        environments: [],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     const reference = await addDoc(collection(db, APPLICATIONS_COLLECTION), {
       name: input.name.trim(),
       description: input.description.trim(),
@@ -214,6 +272,15 @@ export class AppService {
   }
 
   static async deleteApplication(applicationId: string): Promise<void> {
+    if (isLocalEnvironment()) {
+      LocalDatabaseService.deleteDocument(APPLICATIONS_COLLECTION, applicationId);
+      return;
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     await deleteDoc(doc(db, APPLICATIONS_COLLECTION, applicationId));
   }
 

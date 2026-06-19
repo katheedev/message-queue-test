@@ -11,6 +11,8 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { isLocalEnvironment } from "@/lib/runtimeEnvironment";
+import { LocalDatabaseService } from "@/services/localDatabaseService";
 import {
   SessionUser,
   User,
@@ -37,8 +39,58 @@ const ensureAdminCount = async () => {
   }
 };
 
+const listLocalUsers = () =>
+  LocalDatabaseService.listDocuments<User>(USERS_COLLECTION).map((entry) => ({
+    id: entry.id,
+    ...entry.data,
+    email: normalizeEmail(entry.data.email || ""),
+  }));
+
 export class UserService {
   static async ensureBootstrapAdmin(): Promise<void> {
+    if (isLocalEnvironment()) {
+      const users = listLocalUsers();
+      const bootstrapAdmin = users.find(
+        (user) => user.email === DEFAULT_ADMIN_CREDENTIALS.email,
+      );
+      const now = new Date().toISOString();
+
+      if (bootstrapAdmin?.passwordHash) {
+        return;
+      }
+
+      const passwordHash = await SecurityService.hashPassword(
+        DEFAULT_ADMIN_CREDENTIALS.password,
+      );
+
+      if (bootstrapAdmin) {
+        LocalDatabaseService.updateDocument<User>(USERS_COLLECTION, bootstrapAdmin.id, {
+          name: bootstrapAdmin.name || "System Admin",
+          role: "admin",
+          passwordHash,
+          active: bootstrapAdmin.active ?? true,
+          updatedAt: now,
+          createdAt: bootstrapAdmin.createdAt || now,
+        });
+        return;
+      }
+
+      LocalDatabaseService.createDocument(USERS_COLLECTION, {
+        email: DEFAULT_ADMIN_CREDENTIALS.email,
+        name: "System Admin",
+        role: "admin",
+        passwordHash,
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return;
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     const snapshot = await getDocs(collection(db, USERS_COLLECTION));
     const users = snapshot.docs.map(
       (entry) =>
@@ -85,6 +137,14 @@ export class UserService {
   }
 
   static async getUsers(): Promise<User[]> {
+    if (isLocalEnvironment()) {
+      return listLocalUsers();
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     const snapshot = await getDocs(collection(db, USERS_COLLECTION));
     return snapshot.docs.map(
       (entry) =>
@@ -97,6 +157,21 @@ export class UserService {
   }
 
   static async getUser(userId: string): Promise<User | null> {
+    if (isLocalEnvironment()) {
+      const document = LocalDatabaseService.getDocument<User>(USERS_COLLECTION, userId);
+      return document
+        ? {
+            id: document.id,
+            ...document.data,
+            email: normalizeEmail(document.data.email || ""),
+          }
+        : null;
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     const reference = doc(db, USERS_COLLECTION, userId);
     const snapshot = await getDoc(reference);
 
@@ -112,6 +187,14 @@ export class UserService {
   }
 
   static async getUsersByRole(role: UserRole): Promise<User[]> {
+    if (isLocalEnvironment()) {
+      return listLocalUsers().filter((user) => user.role === role);
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     const roleQuery = query(
       collection(db, USERS_COLLECTION),
       where("role", "==", role),
@@ -128,6 +211,18 @@ export class UserService {
   }
 
   static async getUserByEmail(email: string): Promise<User | null> {
+    if (isLocalEnvironment()) {
+      return (
+        listLocalUsers().find(
+          (user) => user.email === normalizeEmail(email),
+        ) || null
+      );
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     const userQuery = query(
       collection(db, USERS_COLLECTION),
       where("email", "==", normalizeEmail(email)),
@@ -170,6 +265,18 @@ export class UserService {
       throw new Error("Invalid email or password.");
     }
 
+    if (isLocalEnvironment()) {
+      LocalDatabaseService.updateDocument<User>(USERS_COLLECTION, user.id, {
+        lastLoginAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      return toSessionUser(user);
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     await updateDoc(doc(db, USERS_COLLECTION, user.id), {
       lastLoginAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -192,6 +299,23 @@ export class UserService {
 
     const now = new Date().toISOString();
     const passwordHash = await SecurityService.hashPassword(input.password);
+
+    if (isLocalEnvironment()) {
+      return LocalDatabaseService.createDocument(USERS_COLLECTION, {
+        email,
+        name: input.name.trim(),
+        role: input.role,
+        passwordHash,
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     const reference = doc(collection(db, USERS_COLLECTION));
 
     await setDoc(reference, {
@@ -224,6 +348,22 @@ export class UserService {
       }
     }
 
+    if (isLocalEnvironment()) {
+      LocalDatabaseService.updateDocument<User>(USERS_COLLECTION, userId, {
+        ...(input.email ? { email: nextEmail } : {}),
+        ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+        ...(input.role ? { role: input.role } : {}),
+        ...(input.active !== undefined ? { active: input.active } : {}),
+        updatedAt: new Date().toISOString(),
+      });
+      await ensureAdminCount();
+      return;
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     await updateDoc(doc(db, USERS_COLLECTION, userId), {
       ...(input.email ? { email: nextEmail } : {}),
       ...(input.name !== undefined ? { name: input.name.trim() } : {}),
@@ -242,6 +382,18 @@ export class UserService {
     }
 
     const passwordHash = await SecurityService.hashPassword(password);
+    if (isLocalEnvironment()) {
+      LocalDatabaseService.updateDocument<User>(USERS_COLLECTION, userId, {
+        passwordHash,
+        updatedAt: new Date().toISOString(),
+      });
+      return;
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     await updateDoc(doc(db, USERS_COLLECTION, userId), {
       passwordHash,
       updatedAt: new Date().toISOString(),
@@ -261,12 +413,49 @@ export class UserService {
       }
     }
 
+    if (isLocalEnvironment()) {
+      LocalDatabaseService.deleteDocument(USERS_COLLECTION, userId);
+      LocalDatabaseService.deleteDocument(USER_ACCESS_COLLECTION, userId);
+      await ensureAdminCount();
+      return;
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     await deleteDoc(doc(db, USERS_COLLECTION, userId));
     await deleteDoc(doc(db, USER_ACCESS_COLLECTION, userId));
     await ensureAdminCount();
   }
 
   static async getUserAccess(userId: string): Promise<UserApplicationAccess[]> {
+    if (isLocalEnvironment()) {
+      const document = LocalDatabaseService.getDocument<{
+        applications?: UserApplicationAccess[];
+      }>(USER_ACCESS_COLLECTION, userId);
+      if (!document) {
+        return [];
+      }
+
+      const accessList = Array.isArray(document.data.applications)
+        ? document.data.applications
+        : [];
+
+      return accessList
+        .filter((entry) => entry?.appId)
+        .map((entry) => ({
+          appId: entry.appId,
+          environmentIds: Array.isArray(entry.environmentIds)
+            ? entry.environmentIds.filter(Boolean)
+            : [],
+        }));
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     const snapshot = await getDoc(doc(db, USER_ACCESS_COLLECTION, userId));
     if (!snapshot.exists()) {
       return [];
@@ -288,6 +477,23 @@ export class UserService {
     userId: string,
     applications: UserApplicationAccess[],
   ): Promise<void> {
+    if (isLocalEnvironment()) {
+      LocalDatabaseService.setDocument(USER_ACCESS_COLLECTION, userId, {
+        applications: applications
+          .filter((entry) => entry.appId && entry.environmentIds.length > 0)
+          .map((entry) => ({
+            appId: entry.appId,
+            environmentIds: Array.from(new Set(entry.environmentIds)),
+          })),
+        updatedAt: new Date().toISOString(),
+      });
+      return;
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not configured.");
+    }
+
     await setDoc(doc(db, USER_ACCESS_COLLECTION, userId), {
       applications: applications
         .filter((entry) => entry.appId && entry.environmentIds.length > 0)

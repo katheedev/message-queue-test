@@ -1,6 +1,7 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { initializeApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
+import { isLocalEnvironment } from "@/lib/runtimeEnvironment";
 
 // Firebase configuration - using environment variables for safety
 const firebaseConfig = {
@@ -12,11 +13,9 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+const app = isLocalEnvironment() ? null : initializeApp(firebaseConfig);
 
-// Initialize Firebase services
-export const db = getFirestore(app);
-export const auth = getAuth(app);
+export const db = app ? getFirestore(app) : null;
+export const auth = app ? getAuth(app) : null;
 
 export default app;

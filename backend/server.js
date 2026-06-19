@@ -73,6 +73,13 @@ app.use(express.json());
 // Test Kafka connection
 app.post('/api/kafka/test-connection', async (req, res) => {
   const config = req.body;
+  if (!config || !config.bootstrapServers) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid configuration: bootstrapServers is required',
+    });
+  }
+
   try {
     const kafka = new Kafka({
       brokers: config.bootstrapServers.split(',').map(s => s.trim()),
@@ -104,7 +111,6 @@ app.post('/api/kafka/topics', async (req, res) => {
       message: 'Invalid configuration: bootstrapServers is required'
     });
   }
-  debugger
 
   try {
     const kafka = new Kafka({
