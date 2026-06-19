@@ -1,5 +1,0 @@
-syntax = "proto3";
-message DcsFlightUpdateInternal {
-  repeated string flightReferences = 1;
-  string userName = 2;
-}
