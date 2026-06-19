@@ -12,12 +12,59 @@ const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+const allowAllOrigins = allowedOrigins.includes('*');
+
+const log = (level, message, meta) => {
+  const timestamp = new Date().toISOString();
+  if (meta !== undefined) {
+    console[level](`[${timestamp}] ${message}`, meta);
+    return;
+  }
+
+  console[level](`[${timestamp}] ${message}`);
+};
+
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  const origin = req.headers.origin || 'no-origin';
+
+  log('log', `Incoming ${req.method} ${req.originalUrl}`, {
+    origin,
+    ip: req.ip,
+  });
+
+  res.on('finish', () => {
+    log('log', `Completed ${req.method} ${req.originalUrl}`, {
+      origin,
+      statusCode: res.statusCode,
+      durationMs: Date.now() - startedAt,
+    });
+  });
+
+  next();
+});
+
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+    if (
+      !origin ||
+      allowAllOrigins ||
+      allowedOrigins.length === 0 ||
+      allowedOrigins.includes(origin)
+    ) {
+      log('log', 'CORS allowed', {
+        origin: origin || 'no-origin',
+        allowAllOrigins,
+        allowedOrigins,
+      });
       return callback(null, true);
     }
 
+    log('warn', 'CORS blocked', {
+      origin,
+      allowAllOrigins,
+      allowedOrigins,
+    });
     return callback(new Error(`CORS blocked for origin: ${origin}`));
   },
 }));
@@ -502,7 +549,26 @@ app.post('/api/ibmmq/channels', async (req, res) => {
   }
 });
 
+app.use((err, req, res, next) => {
+  log('error', `Request failed ${req.method} ${req.originalUrl}`, {
+    origin: req.headers.origin || 'no-origin',
+    message: err.message,
+  });
+
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  res.status(500).json({
+    status: 'error',
+    message: err.message || 'Internal server error',
+  });
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  log('log', `Server running on port ${PORT}`, {
+    allowAllOrigins,
+    allowedOrigins,
+  });
 });
